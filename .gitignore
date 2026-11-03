@@ -19,3 +19,6 @@ deploy/backups/
 *.db-wal
 *.db-shm
 snapshot-*.jpg
+
+# One-command demo
+demo-data/
