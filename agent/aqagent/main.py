@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 import logging.handlers
+import platform
 import signal
 import sys
 import threading
@@ -20,9 +21,9 @@ from pathlib import Path
 import cv2
 
 from . import __version__
-from .camera import CameraWorker, open_source
-from .config import CameraConfig, load_config
-from .net import CaptureState, Heartbeat, LiveSender, LiveState, Uploader
+from .camera import CameraWorker, open_index, open_source
+from .config import ID_RE, CameraConfig, load_config
+from .net import CaptureState, Heartbeat, LiveSender, LiveState, ManagedState, Prober, Uploader
 from .power import prevent_sleep
 from .spool import Spool
 
@@ -40,32 +41,106 @@ def setup_logging(log_dir: Path | None, verbose: bool) -> None:
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
+class CameraSet:
+    """One capture thread per wanted camera: the cameras in the config file plus the ones
+    chosen on the dashboard's Cameras page. Changes on the dashboard apply within seconds."""
+
+    def __init__(self, cfg, spool, live, sender, capture, managed):
+        self.cfg, self.spool, self.live, self.sender, self.capture, self.managed = cfg, spool, live, sender, capture, managed
+        self._lock = threading.Lock()
+        self._workers: dict[str, tuple[CameraWorker, threading.Event, CameraConfig]] = {}
+
+    def desired(self) -> dict[str, CameraConfig]:
+        want = {c.id: c for c in self.cfg.cameras}
+        for m in self.managed.get():
+            cid = str(m.get("id") or "")
+            if not ID_RE.match(cid) or cid in want:
+                continue  # the config file wins on a name clash
+            try:
+                want[cid] = CameraConfig(id=cid, name=m.get("name"), source=m.get("source", 0),
+                                         still_interval_s=max(1.0, float(m.get("still_interval_s") or 10)),
+                                         width=int(m.get("width") or 1920), height=int(m.get("height") or 1080))
+            except (TypeError, ValueError):
+                continue
+        return want
+
+    def reconcile(self) -> None:
+        want = self.desired()
+        stopped = []
+        with self._lock:
+            for cid in list(self._workers):
+                if cid not in want or want[cid] != self._workers[cid][2]:
+                    worker, ev, _ = self._workers.pop(cid)
+                    ev.set()
+                    stopped.append(worker)
+        for worker in stopped:
+            worker.join(timeout=5)  # releases the webcam before anything else opens it
+            log.info("camera %s stopped", worker.cfg.id)
+        with self._lock:
+            for cid, c in want.items():
+                if cid not in self._workers:
+                    ev = threading.Event()
+                    worker = CameraWorker(c, self.spool, self.live.is_live, self.sender.submit, ev, self.capture.get)
+                    worker.start()
+                    self._workers[cid] = (worker, ev, c)
+                    log.info("camera %s started (source %r)", cid, c.source)
+
+    def statuses(self) -> list[dict]:
+        with self._lock:
+            return [w.status() for w, _, _ in self._workers.values()]
+
+    def in_use(self) -> dict[int, str]:
+        with self._lock:
+            return {c.source: cid for cid, (_, _, c) in self._workers.items() if isinstance(c.source, int)}
+
+    def stop_all(self) -> None:
+        with self._lock:
+            workers = list(self._workers.values())
+            self._workers.clear()
+        for _, ev, _ in workers:
+            ev.set()
+        for w, _, _ in workers:
+            w.join(timeout=5)
+
+
 def cmd_run(args) -> int:
     cfg = load_config(args.config)
     setup_logging(cfg.spool_dir, args.verbose)
-    log.info("aqagent %s starting as %r with %d camera(s); server %s", __version__, cfg.agent_id, len(cfg.cameras),
-             cfg.server_url)
+    log.info("aqagent %s starting as %r with %d camera(s) from the config file; server %s", __version__, cfg.agent_id,
+             len(cfg.cameras), cfg.server_url)
+    if not cfg.cameras:
+        log.info("no cameras in the config file: choose them on the dashboard's Cameras page")
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
     keepawake = prevent_sleep() if cfg.prevent_sleep else None
+    if platform.system() == "Darwin":
+        # macOS asks for camera permission only from the main thread: ask now, once.
+        cap = open_index(0)
+        if cap is not None:
+            cap.release()
 
     spool = Spool(cfg.spool_dir, cfg.keep_sent_days)
     live = LiveState()
     capture = CaptureState()
+    managed = ManagedState()
     sender = LiveSender(cfg, live, stop)
-    cameras = [CameraWorker(c, spool, live.is_live, sender.submit, stop, capture.get) for c in cfg.cameras]
-    threads = [*cameras, sender, Uploader(cfg, spool, stop),
-               Heartbeat(cfg, spool, lambda: [c.status() for c in cameras], live, stop, capture)]
+    cams = CameraSet(cfg, spool, live, sender, capture, managed)
+    prober = Prober(cfg, cams.in_use)
+    threads = [sender, Uploader(cfg, spool, stop),
+               Heartbeat(cfg, spool, cams.statuses, live, stop, capture, managed, prober.request)]
     for t in threads:
         t.start()
+    prober.request()  # tell the dashboard which cameras this computer has
     try:
         while not stop.is_set():
+            cams.reconcile()
             stop.wait(1.0)
     finally:
         log.info("stopping; %d stills still waiting to upload (they will be sent next time)", spool.backlog())
         stop.set()
+        cams.stop_all()
         for t in threads:
             t.join(timeout=5)
         if keepawake is not None:
@@ -91,22 +166,16 @@ def cmd_check(args) -> int:
 
 
 def cmd_list(args) -> int:
-    print("Probing camera numbers 0..%d (this can take a few seconds)..." % (args.max - 1))
-    found = 0
-    for i in range(args.max):
-        cap, _ = open_source(CameraConfig(id="probe", source=i, backend=args.backend, fourcc=None,
-                                          autofocus=None, width=640, height=480))
-        if cap is None:
-            continue
-        ok, frame = cap.read()
-        if ok and frame is not None:
-            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            print(f"  source: {i}   -> working ({w}x{h} by default)")
-            found += 1
-        cap.release()
-    if not found:
-        print("No cameras found. Check the USB cable, close other apps using the camera, or try --backend dshow / msmf.")
+    from .discover import probe
+
+    print(f"Looking for cameras 0..{args.max - 1} (this can take a few seconds)...")
+    cams = probe(lambda i: open_index(i, args.backend), max_index=args.max)
+    for c in cams:
+        name = c.get("name") or "camera"
+        print(f"  source: {c['index']}   {name}  ({c['width']}x{c['height']} when opened)")
+    if not cams:
+        print("No cameras found. Check the USB cable, close other apps using the camera (Zoom, Teams...),")
+        print("and allow camera access (Windows: Settings > Privacy > Camera; Mac: Privacy & Security > Camera).")
     return 0
 
 
@@ -140,6 +209,10 @@ def cmd_snapshot(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:  # OpenCV warns loudly about every camera number that doesn't exist while scanning
+        cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+    except AttributeError:
+        pass
     p = argparse.ArgumentParser(prog="aqagent", description="Air-quality monitor capture agent")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)

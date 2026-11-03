@@ -139,8 +139,8 @@ function alignBadge(d, cam) {
 
 function updateCard(card, cam, ov) {
   card.title.textContent = cam.name || cam.id;
-  card.status.className = `pill ${cam.online ? 'good' : 'bad'}`;
-  card.status.textContent = cam.online ? 'Online' : 'Offline';
+  card.status.className = `pill ${cam.stopped ? '' : cam.online ? 'good' : 'bad'}`;
+  card.status.textContent = cam.stopped ? 'Stopped' : cam.online ? 'Online' : 'Offline';
   const st = cam.status || {};
   const bits = [
     `Computer: ${cam.agent_id || '–'}`,

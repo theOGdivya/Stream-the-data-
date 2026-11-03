@@ -119,6 +119,8 @@ def overview(
             "latest_frame_id": latest[0] if latest else None,
             "frames_last_hour": frames_last_hour.get(cam.id, 0),
             "avg_still_bytes": avg_size.get(cam.id),
+            "stopped": bool(cam.managed and not cam.managed.get("enabled", True)),
+            "source": (cam.managed or {}).get("source", status.get("source")),
             "mask_enabled": bool(cam.mask_enabled),
             "expected_last_hour": round(expected) if expected else None,
             "watched": live.is_watched(cam.id),

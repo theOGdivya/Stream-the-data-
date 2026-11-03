@@ -5,6 +5,7 @@ import hashlib
 import logging
 import math
 import os
+import platform
 import threading
 import time
 from typing import Callable
@@ -28,6 +29,24 @@ BACKENDS = {
     "gstreamer": cv2.CAP_GSTREAMER,
 }
 ROTATIONS = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+# For webcams, each system's native driver interface: it opens faster and numbers cameras
+# the same way the camera picker's names do (DirectShow order on Windows).
+NATIVE_BACKEND = {"Windows": cv2.CAP_DSHOW, "Darwin": cv2.CAP_AVFOUNDATION, "Linux": cv2.CAP_V4L2}
+
+
+def resolve_backend(name: str, source) -> int:
+    if name == "auto" and isinstance(source, int):
+        return NATIVE_BACKEND.get(platform.system(), cv2.CAP_ANY)
+    return BACKENDS.get(name, cv2.CAP_ANY)
+
+
+def open_index(index: int, backend: str = "auto"):
+    """Open webcam ``index`` for a quick look (camera picker). Returns the capture or None."""
+    cap = cv2.VideoCapture(index, resolve_backend(backend, index))
+    if not cap.isOpened():
+        cap.release()
+        return None
+    return cap
 
 
 def open_source(cfg: CameraConfig):
@@ -39,7 +58,7 @@ def open_source(cfg: CameraConfig):
         return SyntheticSource(bump_after_s=120), False
     if isinstance(src, str) and src.strip().isdigit():
         src = int(src)
-    cap = cv2.VideoCapture(src, BACKENDS.get(cfg.backend, cv2.CAP_ANY))
+    cap = cv2.VideoCapture(src, resolve_backend(cfg.backend, src))
     if not cap.isOpened():
         cap.release()
         return None, False
@@ -104,7 +123,7 @@ class CameraWorker(threading.Thread):
         with self._lock:
             s = dict(self._status)
         s.update({"id": self.cfg.id, "name": self.cfg.name, "still_interval_s": self.cfg.still_interval_s,
-                  "live_fps": self.cfg.live_fps})
+                  "live_fps": self.cfg.live_fps, "source": str(self.cfg.source)})
         return s
 
     def _set(self, **kw) -> None:

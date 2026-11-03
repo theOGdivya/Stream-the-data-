@@ -57,6 +57,9 @@ class Camera(Base):
     # (a full picture is still kept every ``full_every_s`` seconds for context).
     mask_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
     full_every_s: Mapped[int | None] = mapped_column(Integer, default=300)
+    # Chosen on the dashboard's Cameras page (None = set in the capture computer's config file):
+    # {"source": 0 | "synthetic" | "rtsp://...", "still_interval_s": 10, "enabled": true}
+    managed: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class TestRun(Base):

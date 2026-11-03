@@ -50,26 +50,20 @@ on each monitor, alerts, and charts.
 | `docs/deploy.md` | Step-by-step server setup on Hostinger. |
 | `docs/test-protocol.md` | How to set up and run a side-by-side test so the data holds up in a white paper. |
 
-## Try it on your computer (one command)
+## Try it on your computer
 
-You need Python 3.11 or newer (python.org) and a copy of this repository. From the repository folder:
+1. Install **Python 3.12** (or newer) from <https://www.python.org/downloads/>. On Windows, tick **"Add python.exe to PATH"** during setup.
+2. Download this project: **Code → Download ZIP** on GitHub, and unzip it.
+3. Double-click **`start-demo.bat`** (Windows) or **`start-demo.command`** (Mac; the first time, right-click it and choose **Open**).
+   The first start installs what it needs (a few minutes). Then your browser opens the **Cameras** page. Log in with `demo` / `demo`.
+4. Pick your webcam from the dropdown (you see a preview of it) and press **Start recording**.
+   No webcam? Pick **Fake camera with demo monitors**.
+5. Go to **Calibrate**: click the 4 corners of a monitor's screen, then drag a box around each number. With the fake camera, the first monitor is already marked.
+6. Watch **Live**, **Lined up** and **Results**. Close the window (or press Ctrl+C) to stop.
 
-```bash
-python demo.py
-```
-
-This installs everything into `demo-data/` (a few minutes the first time), starts the server, the worker and a
-**fake camera filming two fake monitors**, and opens <http://localhost:8000> (login `demo` / `demo`).
-One fake monitor is already set up; mark the other one yourself on the **Calibrate** page.
-
-To use a real webcam pointed at a real monitor:
-
-```bash
-python demo.py --webcam 0
-```
-
-Add `--bump` to have the fake camera get knocked after 2 minutes, to watch camera-shift detection correct it.
-Press Ctrl+C to stop. Delete `demo-data/` to start fresh. On Windows, use `py demo.py` if `python` isn't found.
+From a terminal you can also run `python demo.py` (Mac/Linux: `python3 demo.py`). With `--webcam 0` it records webcam 0 straight away;
+with `--bump` the fake camera gets knocked after 2 minutes, so you can watch camera-shift detection correct it.
+Delete the `demo-data` folder to start fresh.
 
 ### Manual setup (what demo.py does)
 
