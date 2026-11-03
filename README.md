@@ -57,6 +57,17 @@ Put it on your VPS once (about 15 minutes, all in Hostinger's browser terminal):
 Then open its address from any browser. To record, open the website on the computer next to the monitors and go to
 **Cameras → Open the recorder**.
 
+## Run it on GitHub (Codespaces): a temporary link for you and your team
+
+On the repository page: **Code → Codespaces → Create codespace on this branch**. The platform installs and starts by
+itself (the first time takes a few minutes); `.devcontainer/README.md` opens with the steps:
+- your login is in `demo-data/login.txt`;
+- the **Ports** tab gives the `https://…app.github.dev` address;
+- set port 8000 to **Public** to share it with your team.
+
+A codespace stops when idle (30 minutes by default, up to 4 hours), so use it for trying things out, not for tests
+that run for days.
+
 ## Try it on your computer
 
 1. Install **Python 3.12** (or newer) from <https://www.python.org/downloads/>. On Windows, tick **"Add python.exe to PATH"** during setup.
