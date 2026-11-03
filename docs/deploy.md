@@ -30,6 +30,9 @@ You don't need SSH on your own computer: Hostinger has a terminal in the browser
 
 Run `bash setup.sh` again any time to restart, and `git pull && bash setup.sh` to update.
 
+**Started with the free sslip.io address and now want your own?** Add the DNS A record (e.g. `aq` → your VPS IP),
+wait a few minutes, then run `bash setup.sh --domain aq.yourcompany.com`. Everything recorded so far stays.
+
 ## Doing it by hand
 
 ### 1. Prepare the VPS (once)
