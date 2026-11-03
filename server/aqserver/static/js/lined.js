@@ -59,6 +59,7 @@ async function render(data) {
     else notes.push('No picture near this time');
     if (t.alignment?.status === 'adjusted' && t.alignment.shift_px >= 8) notes.push(`view shifted ${Math.round(t.alignment.shift_px)} px, auto-corrected`);
     if (t.alignment?.status === 'lost') notes.push('monitor not found in this picture');
+    if (t.alignment?.status === 'kept') notes.push('picture changed; read at the last known spot');
     if (t.ocr_status === 'pending') notes.push('not read yet');
     tile.meta.textContent = notes.join(' · ');
     if (t.frame_id) {

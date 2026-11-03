@@ -15,7 +15,7 @@ def _setup(client, agent_client, app, settings, cam="cam1", pm="37", co2="812", 
     dev = client.post(f"/api/cameras/{cam}/devices",
                       json={"name": f"Monitor on {cam}", "model": "X", "corners": SCENE_CORNERS, "ref_frame_id": fid}).json()
     for metric in ("pm25", "co2"):
-        client.post(f"/api/devices/{dev['id']}/fields", json={"metric": metric, "box": boxes[metric]})
+        client.post(f"/api/devices/{dev['id']}/fields", json={"metric": metric, "box": boxes[metric], "recognizer": "sevenseg"})
     client.post(f"/api/cameras/{cam}/reprocess", json={})
     process_pending(app.state.Session, settings)
     return dev, fid

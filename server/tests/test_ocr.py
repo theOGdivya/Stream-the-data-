@@ -60,3 +60,51 @@ def test_judge_flags_out_of_range_and_low_confidence():
     assert judge(50, 0.3, None, 0, 1000, 0.6)[0] == "review"
     assert judge(None, 0.9, "blank display", 0, 1000, 0.6) == ("review", "blank display")
     assert judge(50, 0.9, None, 0, 1000, 0.6) == ("ok", None)
+
+
+def test_automatic_mode_is_never_confidently_wrong():
+    """On realistic webcam-like crops (LCD and normal fonts, blur, glare, labels), Automatic
+    either reads the right number or sends the reading to review."""
+    from aqserver.ocr.pipeline import parse_value, read_field
+    from realistic import cases
+
+    right = 0
+    data = cases(40, seed=11)
+    for img, text, kind in data:
+        out = read_field(img, FieldSpec(1, "pm25", [0, 0, 1, 1], recognizer="auto",
+                                        options={"decimals": "auto" if "." in text else 0}))
+        v = parse_value(out.text)
+        if out.confidence >= 0.6:
+            assert v is not None and abs(v - float(text)) < 1e-6, (kind, text, out.text, out.note)
+            right += 1
+        assert set(out.extra) >= {"sevenseg", "tesseract"}
+    assert right >= len(data) // 2
+
+
+def test_each_reader_on_its_own_display_type():
+    from aqserver.ocr import sevenseg, tess
+    from aqserver.ocr.pipeline import parse_value
+    from realistic import cases
+
+    for img, text, kind in cases(60, seed=5):
+        reader = sevenseg if kind == "lcd" else tess
+        out = reader.read(img, {"decimals": "auto" if "." in text else 0})
+        v = parse_value(out.text)
+        if out.confidence >= 0.6:
+            assert v is not None and abs(v - float(text)) < 1e-6, (kind, text, out.text)
+
+
+def test_automatic_mode_rules():
+    from aqserver.ocr.pipeline import _auto_choice, parse_value
+    from aqserver.ocr.sevenseg import OcrOutput
+
+    def pick(st, sc, tt, tc):
+        out = _auto_choice(OcrOutput(st, sc, None), OcrOutput(tt, tc, None), parse_value(st), parse_value(tt))
+        return out.text, out.confidence >= 0.6
+
+    assert pick("812", 1.0, "812", 0.7) == ("812", True)    # both agree
+    assert pick("812", 1.0, "2", 0.55) == ("812", True)     # the other is unsure
+    assert pick("812", 1.0, "2", 0.96) == ("812", True)     # the other saw only part of it
+    assert pick("8", 0.74, "88", 1.0) == ("88", True)
+    assert pick("35", 1.0, "45", 1.0)[1] is False           # real disagreement: ask a person
+    assert pick("", 0.0, "", 0.0)[1] is False

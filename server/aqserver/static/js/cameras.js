@@ -214,5 +214,11 @@ async function refresh() {
   }
 }
 
+// The recorder gets its own window, so this tab can be used freely while it records.
+$('#open-recorder').addEventListener('click', () => {
+  const w = window.open('capture.html', 'aq-recorder', 'popup,width=1100,height=900');
+  if (!w) location.href = 'capture.html'; // pop-ups blocked: open it here instead
+});
+
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 3000);
