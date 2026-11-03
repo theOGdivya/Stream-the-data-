@@ -30,6 +30,10 @@ You don't need SSH on your own computer: Hostinger has a terminal in the browser
 
 Run `bash setup.sh` again any time to restart, and `git pull && bash setup.sh` to update.
 
+**Your team:** give each person their own login with `bash setup.sh --add-user priya` (it prints their password;
+send it privately). Remove one with `bash setup.sh --remove-user priya`. Everyone sees the same live data, and their
+name is recorded next to every review and change.
+
 **Started with the free sslip.io address and now want your own?** Add the DNS A record (e.g. `aq` → your VPS IP),
 wait a few minutes, then run `bash setup.sh --domain aq.yourcompany.com`. Everything recorded so far stays.
 

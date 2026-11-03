@@ -1,0 +1,78 @@
+<title>AQ Test Platform Preview</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .hero { display: grid; gap: 10px; }
+  .hero p { max-width: 68ch; margin: 0; color: var(--ink-2); }
+  .pages { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+  .page-card { display: grid; gap: 6px; align-content: start; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); color: var(--ink); text-decoration: none; }
+  .page-card:hover, .page-card:focus-visible { border-color: var(--accent); }
+  .page-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .page-card .name { font-weight: 650; font-size: 16px; display: flex; justify-content: space-between; gap: 8px; }
+  .page-card .name span { color: var(--accent); }
+  .page-card .what { font-size: 14px; color: var(--ink-2); }
+  .page-card.start { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .notes { display: grid; gap: 6px; margin: 0; padding-left: 20px; color: var(--ink-2); font-size: 14px; max-width: 75ch; }
+  .steps { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+  .steps ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+  code { font-size: 13px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<header class="topbar"><div class="topbar-inner"><div class="brand">AQ Test Platform</div><span class="pill">Preview</span></div></header>
+<main>
+  <section class="panel hero">
+    <h1>Side-by-side test platform, preview</h1>
+    <p>Click through the real dashboard pages. They are filled with data recorded from a demo run: a fake camera filming
+      two fake air-quality monitors ("Our AQ-1" and "Brand Y"), a simulated camera knock that shift detection corrected,
+      and simulated reference data for the Results page.</p>
+  </section>
+
+  <section class="pages" aria-label="Pages">
+    <a class="page-card start" href="live.html"><div class="name">Live <span>Start here →</span></div>
+      <div class="what">Live camera view, the number on every monitor, alerts and charts. Click the camera picture for the big view.</div></a>
+    <a class="page-card" href="lined.html"><div class="name">Lined up <span>→</span></div>
+      <div class="what">Every monitor's screen side by side from the same moment. Try "Go back in time" and Play.</div></a>
+    <a class="page-card" href="cameras.html"><div class="name">Cameras <span>→</span></div>
+      <div class="what">Choose which camera each computer records, and open the in-browser recorder.</div></a>
+    <a class="page-card" href="capture.html"><div class="name">Recorder <span>→</span></div>
+      <div class="what">Record from a webcam in the browser. Here it uses a simulated camera.</div></a>
+    <a class="page-card" href="calibrate.html"><div class="name">Calibrate <span>→</span></div>
+      <div class="what">Where each monitor's screen and numbers are. Select a monitor, then press Test reading.</div></a>
+    <a class="page-card" href="review.html"><div class="name">Review <span>→</span></div>
+      <div class="what">Readings the software wasn't sure about, with the picture they came from.</div></a>
+    <a class="page-card" href="results.html"><div class="name">Results <span>→</span></div>
+      <div class="what">Each monitor against the reference: slope, R², errors, delay, plots and a draft methods paragraph.</div></a>
+    <a class="page-card" href="data.html"><div class="name">Data &amp; exports <span>→</span></div>
+      <div class="what">Test runs, stored pictures with their fingerprints, reference data and the activity log.</div></a>
+  </section>
+
+  <section class="panel">
+    <h2>What's different in this preview</h2>
+    <ul class="notes">
+      <li>Nothing you change is saved: there is no server behind this preview, only recorded answers.</li>
+      <li>Some screens repeat the recorded moments instead of updating forever.</li>
+      <li>Downloads (CSV, images) and printing only work on the real platform.</li>
+      <li>The recorder can't use your real webcam here. To try your webcam, run the platform on your computer or server (below).</li>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Get the real thing</h2>
+    <div class="steps">
+      <div><h3>On your computer (try your webcam)</h3>
+        <ol>
+          <li>Install Python 3.12 from python.org.</li>
+          <li>Download the project ZIP from GitHub (branch <code>claude/aq-capture-platform</code>) and unzip it.</li>
+          <li>Double-click <code>start-demo.bat</code> (Windows) or <code>start-demo.command</code> (Mac).</li>
+          <li>The Cameras page opens: pick your webcam and press Start recording.</li>
+        </ol></div>
+      <div><h3>As a website on your Hostinger server</h3>
+        <ol>
+          <li>Open hPanel → VPS → Browser terminal.</li>
+          <li>Clone the project, then run <code>cd aq/deploy &amp;&amp; bash setup.sh</code>.</li>
+          <li>Press Enter for a free temporary address, or type your own subdomain.</li>
+          <li>Open the printed address and log in. Details: <code>docs/deploy.md</code>.</li>
+        </ol></div>
+    </div>
+  </section>
+</main>
