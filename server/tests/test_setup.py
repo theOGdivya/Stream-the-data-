@@ -66,3 +66,29 @@ def test_camera_choice_validation(client, agent_client):
     assert client.post("/api/agents/laptop-1/cameras",
                        json={"source": "rtsp://10.0.0.5/stream", "name": "IP cam"}).status_code == 200
     assert client.post("/api/cameras/cam1/stop").status_code == 400  # config-file cameras are managed there
+
+
+def test_browser_capture_uses_dashboard_login(app, client):
+    """A browser tab records through /api/capture/* with the dashboard login, not the agent token."""
+    import hashlib
+    import json
+    import time
+
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as anon:
+        assert anon.post("/api/capture/heartbeat", json={}).status_code == 401
+    hb = {"agent_id": "browser-office", "hostname": "Chrome on Windows", "version": "browser",
+          "agent_time_ms": int(time.time() * 1000), "cameras": [{"id": "web-desk-cam", "name": "Desk cam",
+          "connected": True, "still_interval_s": 10, "source": "browser"}]}
+    assert client.post("/api/capture/heartbeat", json=hb).json()["live"] == []
+    ok, buf = cv2.imencode(".jpg", np.full((90, 160, 3), 120, np.uint8))
+    data = buf.tobytes()
+    meta = {"camera_id": "web-desk-cam", "captured_ms": int(time.time() * 1000), "sha256": hashlib.sha256(data).hexdigest()}
+    r = client.post("/api/capture/frames", data={"meta": json.dumps(meta)}, files={"image": ("s.jpg", data, "image/jpeg")})
+    assert r.json()["duplicate"] is False
+    client.get("/api/cameras/web-desk-cam/live.jpg")  # someone opens the live view
+    assert client.post("/api/capture/heartbeat", json=hb).json()["live"] == ["web-desk-cam"]
+    assert client.post("/api/capture/live/web-desk-cam", content=data, headers={"X-Captured-Ms": "1"}).json() == {"watching": True}
+    agent = client.get("/api/setup").json()["agents"][0]
+    assert agent["browser"] is True and agent["cameras"][0]["source"] == "browser"

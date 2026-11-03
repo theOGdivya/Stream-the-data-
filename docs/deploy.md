@@ -3,7 +3,36 @@
 The server runs as four Docker containers: **PostgreSQL** (database), **api** (dashboard + upload API),
 **worker** (reads numbers, raises alerts) and **Caddy** (HTTPS with a free, auto-renewed certificate).
 
-## 1. Prepare the VPS (once)
+## Quick start (about 15 minutes)
+
+You don't need SSH on your own computer: Hostinger has a terminal in the browser.
+
+1. **hPanel → VPS → your server.** If it isn't on Ubuntu yet, choose the OS template **Ubuntu 24.04** (with or without Docker; the script installs Docker if needed).
+2. **Optional: your own address.** In hPanel → Domains → DNS, add an **A record**, e.g. `aq` → your VPS IP, for `aq.yourcompany.com`.
+   You can skip this: the setup script offers a free address like `203-0-113-5.sslip.io` that points at your server.
+3. **Open the Browser terminal** (hPanel → VPS → Browser terminal) and run:
+
+   ```bash
+   git clone -b claude/aq-capture-platform https://github.com/theOGdivya/Stream-the-data-.git aq
+   ```
+
+   The repository is private, so GitHub asks for a username and password. Enter your GitHub username, and as the
+   password a token: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+   Generate, with **Contents: read** access to this repository.
+
+   ```bash
+   cd aq/deploy && bash setup.sh
+   ```
+
+   Answer the two questions (address, login name). At the end it prints the web address and your password.
+4. Open the address in any browser and log in. On the computer next to the monitors, go to
+   **Cameras → Open the recorder**, pick the webcam and press **Start recording**. That's it.
+
+Run `bash setup.sh` again any time to restart, and `git pull && bash setup.sh` to update.
+
+## Doing it by hand
+
+### 1. Prepare the VPS (once)
 
 1. In Hostinger hPanel, set the VPS operating system to **Ubuntu 24.04 with Docker** (or plain Ubuntu, then
    install Docker with `curl -fsSL https://get.docker.com | sh`).
@@ -11,9 +40,9 @@ The server runs as four Docker containers: **PostgreSQL** (database), **api** (d
 3. Open ports **22, 80 and 443** in the VPS firewall (hPanel → VPS → Firewall, and `ufw` if you use it).
    Port 80 is needed for the HTTPS certificate.
 
-## 2. Install
+### 2. Install
 
-SSH into the server, then:
+SSH into the server (or use the Browser terminal), then:
 
 ```bash
 git clone https://github.com/theOGdivya/Stream-the-data-.git aq && cd aq/deploy
@@ -39,7 +68,12 @@ Within about a minute, `https://aq.yourcompany.com` asks for a login. If the cer
 
 ## 3. Connect a capture computer
 
-Follow [agent/README.md](../agent/README.md). Use `server_url: https://aq.yourcompany.com` and set
+Two ways:
+
+- **In the browser (nothing to install):** on the computer next to the monitors, open the website →
+  **Cameras → Open the recorder**. Keep that tab open and on screen while recording. The browser needs the `https://`
+  address for camera access.
+- **Capture program (sturdier for long unattended tests):** follow [agent/README.md](../agent/README.md). Use `server_url: https://aq.yourcompany.com` and set
 `agent_token` to the `AGENT_TOKEN` value from `.env`.
 
 ## 4. Backups (do this before the first real test)

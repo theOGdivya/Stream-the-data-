@@ -85,7 +85,8 @@ def setup(db: Session = Depends(get_db), settings: Settings = Depends(get_settin
             cam_online = bool(online and (cam.status or {}).get("connected") and cam.status_ms
                               and now - cam.status_ms < offline_ms)
             cams.append(camera_dict(cam, cam_online))
-        agents.append({"id": a.id, "hostname": a.hostname, "online": online, "last_seen_ms": a.last_seen_ms,
+        agents.append({"id": a.id, "hostname": a.hostname, "version": a.version, "browser": a.version == "browser",
+                       "online": online, "last_seen_ms": a.last_seen_ms,
                        "scanning": discovery.scanning(a.id), "detected": discovery.found(a.id), "cameras": cams})
     return {"server_time_ms": now, "agents": agents}
 

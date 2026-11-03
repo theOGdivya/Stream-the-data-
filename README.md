@@ -28,6 +28,7 @@ on each monitor, alerts, and charts.
 | | |
 |---|---|
 | **Capture** | The agent keeps each camera open, saves a still every *N* seconds (aligned to the clock so all cameras match), and uploads it. If the internet drops, stills queue on disk and upload later; nothing is lost. Focus/exposure can be locked; sleep is blocked. |
+| **Record from a browser** | On the website, **Cameras → Open the recorder**: pick the computer's webcam from the browser's own list, see it live, press Start. The tab saves a still every few seconds with its SHA-256, keeps unsent pictures on the computer (IndexedDB) until they upload, sends a live view on demand and keeps the screen awake. Nothing to install. |
 | **Live view** | Only while someone is watching a camera on the dashboard, the agent also streams a smaller picture about twice a second, so upload stays small the rest of the time. |
 | **Evidence** | Every stored picture is checked against the SHA-256 the agent computed when it took it. Exports include each picture's hash, and the pictures manifest lists them all. |
 | **Reading numbers** | You mark each monitor's screen once (click 4 corners), then draw a box around each number. A purpose-built seven-segment reader handles LCD digits; Tesseract handles normal fonts on colour screens. |
@@ -49,6 +50,12 @@ on each monitor, alerts, and charts.
 | `deploy/` | Docker Compose stack for the VPS: PostgreSQL, API, worker, Caddy (automatic HTTPS), plus a backup script. |
 | `docs/deploy.md` | Step-by-step server setup on Hostinger. |
 | `docs/test-protocol.md` | How to set up and run a side-by-side test so the data holds up in a white paper. |
+
+## Use it as a website
+
+Put it on your VPS once (about 15 minutes, all in Hostinger's browser terminal): see [docs/deploy.md](docs/deploy.md#quick-start-about-15-minutes).
+Then open its address from any browser. To record, open the website on the computer next to the monitors and go to
+**Cameras → Open the recorder**.
 
 ## Try it on your computer
 

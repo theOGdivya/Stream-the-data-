@@ -34,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for module in (agent, setup, monitor, calibration, review, data, strip, results):
         app.include_router(module.router)
+    app.include_router(agent.browser)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
