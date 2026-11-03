@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..db import now_ms
-from ..deps import get_db, get_live, get_settings
+from ..deps import get_db, get_discovery, get_live, get_settings
+from ..discovery import Discovery
 from ..live import LiveHub
 from ..models import Agent, Camera, Device, Frame
 from ..reference import RefRow, store_reference_rows
@@ -36,6 +37,7 @@ class CameraStatus(BaseModel):
     still_interval_s: float | None = None
     last_capture_ms: int | None = None
     live_fps: float | None = None
+    source: str | None = None
 
 
 class Heartbeat(BaseModel):
@@ -62,7 +64,10 @@ def heartbeat(
     hb: Heartbeat,
     db: Session = Depends(get_db),
     live: LiveHub = Depends(get_live),
+    discovery: Discovery = Depends(get_discovery),
 ):
+    from .setup import managed_for_agent
+
     if not valid_camera_id(hb.agent_id):
         raise HTTPException(400, "agent_id may only contain letters, digits, '.', '_' and '-'")
     now = now_ms()
@@ -89,8 +94,10 @@ def heartbeat(
         cam.status_ms = now
         camera_ids.append(cs.id)
     capture = capture_settings(db, camera_ids)
+    managed = managed_for_agent(db, hb.agent_id)
     db.commit()
-    return {"live": live.watched(camera_ids), "server_time_ms": now, "capture": capture}
+    return {"live": live.watched(camera_ids), "server_time_ms": now, "capture": capture,
+            "cameras": managed, "probe": discovery.take_request(hb.agent_id)}
 
 
 MASK_MARGIN = 0.25  # share of the screen size kept around each monitor (bezel, labels, room for shifts)

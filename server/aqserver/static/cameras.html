@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cameras</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/cameras.js"></script>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="panel-head"><h1>Cameras</h1></div>
+      <p class="small muted" style="margin:0">Pick which cameras each computer records. After a camera starts, mark its monitors on
+        <a href="calibrate.html">Calibrate</a> so the numbers get read.</p>
+    </section>
+
+    <section class="panel hidden" id="no-agents">
+      <h2>No capture computer is connected yet</h2>
+      <p>The capture program runs on the computer the webcam is plugged into. On that computer:</p>
+      <ul>
+        <li>To try things out: double-click <strong>start-demo</strong> in the project folder (or run <code>python demo.py</code>).</li>
+        <li>For real tests: install the capture program as described in <code>agent/README.md</code>, pointing it at this server.</li>
+      </ul>
+      <p class="small muted">This page updates by itself as soon as a computer connects.</p>
+    </section>
+
+    <div id="agents" style="display:grid;gap:16px"></div>
+  </main>
+</body>
+</html>

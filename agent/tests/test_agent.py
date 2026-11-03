@@ -153,3 +153,59 @@ def test_marked_areas_only(tmp_path):
     assert img[80, 150].max() < 10 and img[20, 20].min() > 150
     worker._save_still(frame, 1_000_000 + 400_000)  # full_every_s passed: a full picture again
     assert json.loads(spool.pending_items()[-1].read_text())["masked"] is False
+
+
+def test_scan_reports_cameras_with_names_and_previews(monkeypatch):
+    import numpy as np
+
+    from aqagent import discover
+
+    class FakeCap:
+        def __init__(self, idx):
+            self.idx = idx
+
+        def read(self):
+            return True, np.full((480, 640, 3), 90 + self.idx, np.uint8)
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(discover, "camera_names", lambda: ({0: "Integrated Webcam", 2: "USB Camera"}, True))
+    cams = discover.probe(lambda i: FakeCap(i) if i in (0, 2) else None, max_index=4, in_use={3: "bench-1"})
+    assert [(c["index"], c["name"]) for c in cams] == [(0, "Integrated Webcam"), (2, "USB Camera"), (3, None)]
+    assert cams[0]["width"] == 640 and cams[0]["preview"]
+    assert cams[2] == {"index": 3, "name": None, "name_certain": True, "in_use_by": "bench-1"}
+
+
+def test_dashboard_chosen_cameras_start_and_stop(tmp_path):
+    from aqagent.config import AgentConfig, CameraConfig
+    from aqagent.main import CameraSet
+    from aqagent.net import CaptureState, LiveState, ManagedState
+
+    cfg = AgentConfig(server_url="http://x", agent_token="t", agent_id="pc", spool_dir=tmp_path,
+                      cameras=[CameraConfig(id="from-file", source="synthetic", still_interval_s=1)])
+    managed = ManagedState()
+    sender = type("S", (), {"submit": staticmethod(lambda *a: None)})()
+    cams = CameraSet(cfg, Spool(tmp_path), LiveState(), sender, CaptureState(), managed)
+    try:
+        cams.reconcile()
+        assert [s["id"] for s in cams.statuses()] == ["from-file"]
+        managed.set([{"id": "web-1", "name": "Webcam", "source": "synthetic", "still_interval_s": 5},
+                     {"id": "from-file", "source": 0},  # clashes with the config file: ignored
+                     {"id": "bad id!", "source": 0}])
+        cams.reconcile()
+        assert sorted(s["id"] for s in cams.statuses()) == ["from-file", "web-1"]
+        managed.set([{"id": "web-1", "name": "Webcam", "source": "synthetic", "still_interval_s": 10}])
+        cams.reconcile()  # changed interval: restarted with the new setting
+        assert {s["id"]: s["still_interval_s"] for s in cams.statuses()} == {"from-file": 1, "web-1": 10}
+        managed.set([])
+        cams.reconcile()
+        assert [s["id"] for s in cams.statuses()] == ["from-file"]
+    finally:
+        cams.stop_all()
+
+
+def test_config_without_cameras_is_allowed(tmp_path):
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("server_url: https://x.example\nagent_token: t\ncameras: []\n")
+    assert load_config(cfg).cameras == []

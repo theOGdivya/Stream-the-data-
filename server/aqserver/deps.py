@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .db import now_ms
+from .discovery import Discovery
 from .live import LiveHub
 from .models import AuditLog
 
@@ -27,6 +28,10 @@ def get_settings(request: Request) -> Settings:
 
 def get_live(request: Request) -> LiveHub:
     return request.app.state.live
+
+
+def get_discovery(request: Request) -> Discovery:
+    return request.app.state.discovery
 
 
 def current_user(request: Request) -> str:

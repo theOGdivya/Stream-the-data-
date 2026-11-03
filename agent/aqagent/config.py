@@ -78,8 +78,7 @@ def load_config(path: str | Path) -> AgentConfig:
             raise ValueError(f"camera {cam.id}: rotate must be 0, 90, 180 or 270")
         seen.add(cam.id)
         cameras.append(cam)
-    if not cameras:
-        raise ValueError("no cameras configured")
+    # No cameras in the file is fine: they can be chosen on the dashboard's Cameras page.
 
     return AgentConfig(
         server_url=server_url,

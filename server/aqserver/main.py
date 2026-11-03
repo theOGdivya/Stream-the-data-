@@ -12,7 +12,8 @@ from .auth import AuthMiddleware
 from .config import Settings, load_settings
 from .db import init_db, make_engine, make_sessionmaker
 from .live import LiveHub
-from .routes import agent, calibration, data, monitor, results, review, strip
+from .discovery import Discovery
+from .routes import agent, calibration, data, monitor, results, review, setup, strip
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -29,8 +30,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.Session = make_sessionmaker(engine)
     app.state.live = LiveHub(settings.live_viewer_ttl_s)
+    app.state.discovery = Discovery()
 
-    for module in (agent, monitor, calibration, review, data, strip, results):
+    for module in (agent, setup, monitor, calibration, review, data, strip, results):
         app.include_router(module.router)
 
     @app.get("/healthz", include_in_schema=False)

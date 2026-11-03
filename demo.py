@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Try the whole platform on this computer with one command.
+"""Try the whole platform on this computer with one command (or double-click start-demo).
 
-    python demo.py               fake camera filming two fake monitors (no hardware needed)
-    python demo.py --webcam 0    use your webcam instead: point it at a real monitor
+    python demo.py               opens the Cameras page: pick your webcam from the dropdown
+                                 (or the fake camera, if you have no webcam)
+    python demo.py --webcam 0    skip the picker and record webcam 0 straight away
+    python demo.py --bump        fake camera that gets knocked after 2 minutes
 
 It installs what it needs into ./demo-data (first run takes a few minutes), starts the
-server, the OCR worker and the capture agent, and opens http://localhost:8000
+server, the OCR worker and the capture program, and opens http://localhost:8000
 (login: demo / demo). Press Ctrl+C to stop. Your demo data is kept for next time;
 delete the demo-data folder to start fresh.
 
@@ -84,49 +86,61 @@ def wait_for(check, seconds: float, what: str) -> None:
 
 
 def write_agent_config(source, port: int) -> Path:
-    name = "Fake monitors (demo)" if str(source).startswith("synthetic") else f"Webcam {source}"
+    """With ``source`` None, no camera is set here: you pick one on the Cameras page."""
     cfg = DEMO / "agent.yaml"
-    cfg.write_text(
-        f"server_url: http://127.0.0.1:{port}\n"
-        f"agent_token: {TOKEN}\n"
-        "agent_id: this-computer\n"
-        "spool_dir: ./spool\n"
-        "keep_sent_days: 1\n"
-        "prevent_sleep: false\n"
-        "cameras:\n"
-        f"  - id: {CAMERA_ID}\n"
-        f"    name: {json.dumps(name)}\n"
-        f"    source: {json.dumps(source)}\n"
-        "    still_interval_s: 5\n"
-        "    live_fps: 2\n",
-        encoding="utf-8",
-    )
+    text = (f"server_url: http://127.0.0.1:{port}\n"
+            f"agent_token: {TOKEN}\n"
+            "agent_id: this-computer\n"
+            "spool_dir: ./spool\n"
+            "keep_sent_days: 1\n"
+            "prevent_sleep: false\n")
+    if source is None:
+        text += "cameras: []\n"
+    else:
+        name = "Fake monitors (demo)" if str(source).startswith("synthetic") else f"Webcam {source}"
+        text += ("cameras:\n"
+                 f"  - id: {CAMERA_ID}\n"
+                 f"    name: {json.dumps(name)}\n"
+                 f"    source: {json.dumps(source)}\n"
+                 "    still_interval_s: 5\n"
+                 "    live_fps: 2\n")
+    cfg.write_text(text, encoding="utf-8")
     return cfg
 
 
-def preset_fake_lcd(py: Path, port: int) -> None:
+def preset_fake_lcd(py: Path, port: int, camera_id: str = CAMERA_ID) -> None:
     """Mark the fake LCD monitor so readings appear straight away. The second fake
     monitor is left for you to mark yourself on the Calibrate page."""
     cams = api(port, "/api/cameras")
-    if any(d for c in cams if c["id"] == CAMERA_ID for d in c["devices"]):
+    if any(d for c in cams if c["id"] == camera_id for d in c["devices"]):
         return  # already calibrated in an earlier demo session
     layout = json.loads(subprocess.check_output(
         [str(py), "-c", "import json; from aqagent.synthetic import LAYOUT; print(json.dumps(LAYOUT))"],
         cwd=ROOT / "agent"))
     lcd = layout["Synthetic LCD"]
-    dev = api(port, f"/api/cameras/{CAMERA_ID}/devices",
+    dev = api(port, f"/api/cameras/{camera_id}/devices",
               {"name": "Fake LCD monitor", "model": "Demo", "corners": lcd["corners"]})
     for metric, box, unit, lo, hi in (("pm25", lcd["fields"]["pm25"], "µg/m³", 0, 1000),
                                      ("co2", lcd["fields"]["co2"], "ppm", 300, 5000)):
         api(port, f"/api/devices/{dev['id']}/fields", {
             "metric": metric, "box": box, "unit": unit, "min_value": lo, "max_value": hi,
             "options": {"polarity": "dark_on_light", "decimals": 0}})
-    api(port, f"/api/cameras/{CAMERA_ID}/reprocess", {})
+    api(port, f"/api/cameras/{camera_id}/reprocess", {})
+
+
+def preset_new_fake_cameras(py: Path, port: int, done: set[str]) -> None:
+    """When the fake camera is picked on the Cameras page, mark its first monitor too."""
+    for agent in api(port, "/api/setup")["agents"]:
+        for cam in agent["cameras"]:
+            if cam["id"] in done or not str(cam.get("source")).startswith("synthetic") or not cam.get("last_frame_ms"):
+                continue
+            preset_fake_lcd(py, port, cam["id"])
+            done.add(cam["id"])
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--webcam", type=int, metavar="N", help="use webcam number N instead of the fake camera")
+    ap.add_argument("--webcam", type=int, metavar="N", help="record webcam number N straight away (no picker)")
     ap.add_argument("--bump", action="store_true",
                     help="fake camera gets knocked after 2 minutes, to watch shift detection correct it")
     ap.add_argument("--port", type=int, default=8000)
@@ -142,7 +156,7 @@ def main() -> int:
         signal.signal(signal.SIGTERM, _stop)
 
     py = ensure_environment()
-    source = ("synthetic-bump" if args.bump else "synthetic") if args.webcam is None else args.webcam
+    source = "synthetic-bump" if args.bump else args.webcam  # None: choose on the Cameras page
     agent_cfg = write_agent_config(source, args.port)
     server_env = {**os.environ, "DATA_DIR": str(DEMO / "server"), "AGENT_TOKEN": TOKEN,
                   "DASHBOARD_USERS": f"{USER}:{PASSWORD}"}
@@ -158,32 +172,40 @@ def main() -> int:
                          "--host", "127.0.0.1", "--port", str(args.port)], ROOT / "server", server_env)
         wait_for(lambda: api(args.port, "/api/overview") is not None, 60, "the server to start")
         start("worker", [str(py), "-m", "aqserver.worker"], ROOT / "server", server_env)
-        print("Starting the camera ...")
+        print("Starting the capture program (it looks for your cameras) ...")
         start("agent", [str(py), "-m", "aqagent", "run", "-c", str(agent_cfg)], ROOT / "agent", dict(os.environ))
-        wait_for(lambda: api(args.port, f"/api/cameras/{CAMERA_ID}/latest-frame"), 60, "the first camera picture")
-        if str(source).startswith("synthetic"):
-            preset_fake_lcd(py, args.port)
+        if source is not None:
+            wait_for(lambda: api(args.port, f"/api/cameras/{CAMERA_ID}/latest-frame"), 60, "the first camera picture")
+            if str(source).startswith("synthetic"):
+                preset_fake_lcd(py, args.port)
 
-        url = f"http://localhost:{args.port}"
+        url = f"http://localhost:{args.port}" + ("/cameras.html" if source is None else "")
         print(f"""
-  Dashboard: {url}     login: {USER} / {PASSWORD}
+  Dashboard: {url}
+  Login:     {USER} / {PASSWORD}
 
-  Things to try:
-   - Live: click the camera picture for the big live view; switch chart metric and range.
-   - Calibrate: the fake LCD monitor is already marked. Click "Add monitor" and mark the
-     dark blue one yourself: click its 4 screen corners, then drag a box around each number.
-   - Data & exports: start a test run, browse stored pictures, download the CSVs.
+  1. Cameras page: pick your webcam from the dropdown (you see a preview), press
+     "Start recording". No webcam? Pick "Fake camera with demo monitors".
+  2. Calibrate: click the 4 corners of a monitor's screen, then drag a box around
+     each number. (With the fake camera, the first monitor is already marked.)
+  3. Live, Lined up, Results: watch the numbers come in.
 
-  Logs are in demo-data/. Press Ctrl+C to stop.
+  Logs are in demo-data/. Press Ctrl+C (or close this window) to stop.
 """)
         if not args.no_browser:
             webbrowser.open(url)
+        preset_done: set[str] = set()
         while True:
             for name, p in procs:
                 if p.poll() is not None:
                     print(f"The {name} stopped unexpectedly; see demo-data/{name}.log")
                     return 1
-            time.sleep(2)
+            if source is None:
+                try:
+                    preset_new_fake_cameras(py, args.port, preset_done)
+                except (urllib.error.URLError, OSError, KeyError, ValueError):
+                    pass
+            time.sleep(3)
     except KeyboardInterrupt:
         print("\nStopping ...")
         return 0

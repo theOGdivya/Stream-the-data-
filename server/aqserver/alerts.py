@@ -58,8 +58,8 @@ def evaluate(db: Session, settings: Settings, now: int) -> list[Condition]:
                                    f"'{a.id}' is low on disk ({a.disk_free_bytes / 1024**3:.1f} GB free)"))
 
     for cam in db.scalars(select(Camera)).all():
-        if cam.agent_id not in online_agents:
-            continue
+        if cam.agent_id not in online_agents or (cam.managed and not cam.managed.get("enabled", True)):
+            continue  # computer offline (alerted above) or camera stopped on purpose
         st = cam.status or {}
         label = cam.name or cam.id
         if not st.get("connected"):

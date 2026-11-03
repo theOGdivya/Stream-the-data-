@@ -202,6 +202,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
   .reading .v { font-size: 22px; }
 }
 
+/* camera picker */
+.picker { display: grid; gap: 16px; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; margin-bottom: 8px; }
+@media (max-width: 760px) { .picker { grid-template-columns: 1fr; } }
+.cams-mini { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+
 /* lined-up strip */
 .lineup { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); align-items: start; }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }

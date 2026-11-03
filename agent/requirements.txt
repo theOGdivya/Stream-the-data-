@@ -2,3 +2,4 @@ opencv-python-headless>=4.9
 numpy>=1.26
 requests>=2.31
 PyYAML>=6.0
+pygrabber==0.2; sys_platform == "win32"  # webcam names for the camera picker

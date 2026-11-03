@@ -112,6 +112,22 @@ class CaptureState:
             return self._by_cam.get(cam)
 
 
+class ManagedState:
+    """Cameras chosen on the dashboard (Cameras page) for this computer, from heartbeats."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cams: list[dict] = []
+
+    def set(self, cams: list[dict]) -> None:
+        with self._lock:
+            self._cams = [dict(c) for c in cams]
+
+    def get(self) -> list[dict]:
+        with self._lock:
+            return [dict(c) for c in self._cams]
+
+
 class LiveState:
     """Which of our cameras somebody is watching right now (from heartbeat responses)."""
 
@@ -136,10 +152,13 @@ class LiveState:
 
 class Heartbeat(threading.Thread):
     def __init__(self, cfg: AgentConfig, spool: Spool, statuses: Callable[[], list[dict]], live: LiveState,
-                 stop: threading.Event, capture: CaptureState | None = None):
+                 stop: threading.Event, capture: CaptureState | None = None, managed: ManagedState | None = None,
+                 on_probe: Callable[[], None] | None = None):
         super().__init__(name="heartbeat", daemon=True)
         self.cfg, self.spool, self.statuses, self.live, self.stop_event = cfg, spool, statuses, live, stop
         self.capture = capture
+        self.managed = managed
+        self.on_probe = on_probe
         self.session = make_session(cfg)
         self.ok = False
 
@@ -166,6 +185,10 @@ class Heartbeat(threading.Thread):
                 self.live.set(resp.get("live") or [])
                 if self.capture is not None:
                     self.capture.set(resp.get("capture") or {})
+                if self.managed is not None and "cameras" in resp:
+                    self.managed.set(resp.get("cameras") or [])
+                if resp.get("probe") and self.on_probe is not None:
+                    self.on_probe()
                 if not self.ok:
                     log.info("connected to %s", self.cfg.server_url)
                 self.ok = True
@@ -176,6 +199,41 @@ class Heartbeat(threading.Thread):
                     last_warn = time.time()
                 self.ok = False
             self.stop_event.wait(self.cfg.heartbeat_s)
+
+
+class Prober:
+    """Looks for cameras on this computer (in the background) and reports them, with a small
+    preview picture each, so they can be picked from a dropdown on the dashboard."""
+
+    def __init__(self, cfg: AgentConfig, in_use: Callable[[], dict[int, str]]):
+        self.cfg, self.in_use = cfg, in_use
+        self.session = make_session(cfg)
+        self._running = threading.Lock()
+
+    def request(self) -> None:
+        if self._running.locked():
+            return
+        threading.Thread(target=self._run, name="camera-scan", daemon=True).start()
+
+    def run_now(self) -> None:
+        self._run()
+
+    def _run(self) -> None:
+        from .camera import open_index
+        from .discover import probe
+
+        if not self._running.acquire(blocking=False):
+            return
+        try:
+            cams = probe(open_index, in_use=self.in_use())
+            log.info("camera scan: %d camera(s) found", len(cams))
+            body = {"agent_id": self.cfg.agent_id, "probed_ms": int(time.time() * 1000), "cameras": cams}
+            self.session.post(f"{self.cfg.server_url}/api/agent/detected", data=json.dumps(body),
+                              headers={"Content-Type": "application/json"}, timeout=(5, 30))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("camera scan failed: %s", exc)
+        finally:
+            self._running.release()
 
 
 class LiveSender(threading.Thread):
