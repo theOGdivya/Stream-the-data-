@@ -1,0 +1,19 @@
+# Linux (Raspberry Pi, Ubuntu): run the agent on boot and restart it if it ever stops.
+#   sudo cp aqagent.service /etc/systemd/system/
+#   (edit User= and the paths below)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now aqagent
+#   journalctl -u aqagent -f        # watch the log
+[Unit]
+Description=Air-quality camera capture agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/stream-the-data-/agent
+ExecStart=/home/pi/stream-the-data-/agent/.venv/bin/python -m aqagent run -c config.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Secrets and local config
+.env
+deploy/.env
+agent/config.yaml
+
+# Local data
+data/
+spool/
+agent/spool/
+deploy/backups/
+*.db
+*.db-wal
+*.db-shm
+snapshot-*.jpg

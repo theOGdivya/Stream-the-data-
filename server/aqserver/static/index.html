@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live monitor</title>
+  <link rel="stylesheet" href="vendor/uplot-1.6.31.min.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/uplot-1.6.31.min.js"></script>
+  <script type="module" src="js/live.js"></script>
+</head>
+<body>
+  <main>
+    <section class="strip" id="strip" aria-label="Status"></section>
+    <section class="alerts" id="alerts" aria-live="polite"></section>
+    <section class="cams" id="cams" aria-label="Cameras">
+      <div class="panel muted" id="no-cams">Waiting for the first capture computer to connect…</div>
+    </section>
+    <section class="panel" aria-labelledby="chart-title">
+      <div class="panel-head">
+        <h2 id="chart-title">Readings over time</h2>
+        <div class="seg" id="metric-seg" role="group" aria-label="Metric"></div>
+        <div class="spacer"></div>
+        <div class="seg" id="range-seg" role="group" aria-label="Time range"></div>
+      </div>
+      <div class="row small muted" style="margin-bottom:8px">
+        <label class="row"><input type="checkbox" id="include-review"> Include readings not yet reviewed</label>
+        <label class="row"><input type="checkbox" id="table-mode"> Show as table</label>
+      </div>
+      <div id="chart"></div>
+      <p class="muted small" id="chart-note"></p>
+    </section>
+  </main>
+
+  <dialog id="zoom">
+    <div class="dialog-head">
+      <h2 id="zoom-title">Camera</h2>
+      <span id="zoom-badge" class="pill">…</span>
+      <button type="button" id="zoom-close">Close</button>
+    </div>
+    <div class="dialog-body"><img id="zoom-img" alt="Live camera view"></div>
+  </dialog>
+</body>
+</html>

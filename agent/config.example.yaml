@@ -1,0 +1,38 @@
+# Copy to config.yaml and edit. Run: python -m aqagent run -c config.yaml
+
+# Your server (Hostinger VPS). Must be https:// in real use.
+server_url: https://aq.example.com
+# Same value as AGENT_TOKEN on the server. You can also leave this out and set the
+# AQ_AGENT_TOKEN environment variable instead.
+agent_token: paste-the-agent-token-here
+# A name for this computer, shown on the dashboard.
+agent_id: lab-laptop-1
+
+# Stills are saved here first, then uploaded (so nothing is lost if the internet drops).
+spool_dir: ./spool
+# Keep uploaded stills on this computer as a backup for this many days (0 = delete after upload).
+keep_sent_days: 7
+# Stop Windows/macOS from sleeping while the agent runs.
+prevent_sleep: true
+
+cameras:
+  - id: bench1-cam1            # unique, letters/digits/-/_ only; never change it during a test
+    name: "Bench 1 - left shelf"
+    source: 0                  # webcam number (find it with: python -m aqagent list-cameras),
+                               # or "rtsp://user:pass@192.168.1.50:554/stream1", or "synthetic" for a demo
+    width: 1920
+    height: 1080
+    still_interval_s: 10       # one stored picture every 10 s (8,640 a day)
+    jpeg_quality: 90
+    live_fps: 2                # live view speed while someone is watching the dashboard
+    live_width: 960
+    autofocus: false           # lock focus so the camera does not hunt (set focus below if needed)
+    # focus: 30
+    # auto_exposure: 1         # driver specific: on many Windows webcams 1 = manual, 3 = auto
+    # exposure: -6
+    # rotate: 180              # if the camera is mounted upside down
+    # backend: dshow           # Windows: try dshow or msmf if the camera will not open
+
+  # - id: bench1-cam2
+  #   name: "Bench 1 - right shelf"
+  #   source: 1

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calibrate cameras</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/calibrate.js"></script>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Calibrate</h1>
+        <label class="row small">Camera <select id="camera"></select></label>
+        <button type="button" id="newest">Use newest picture</button>
+        <span class="muted small" id="frame-info"></span>
+      </div>
+      <ol class="small muted" style="margin:0;padding-left:20px">
+        <li><strong>Add monitor</strong>, then click the 4 corners of its screen: top-left, top-right, bottom-right, bottom-left. You can drag the corners afterwards to fine-tune.</li>
+        <li>Select the monitor. On its straightened screen, <strong>drag a box tightly around one number</strong> (digits only, no labels or units) and say what it is.</li>
+        <li><strong>Test reading</strong> to check every number, then <strong>re-read past pictures</strong> so earlier stills use the new settings.</li>
+      </ol>
+    </section>
+
+    <div class="cal-layout">
+      <section class="panel">
+        <div class="panel-head"><h2>Camera picture</h2></div>
+        <div class="stage" id="frame-stage">
+          <img id="frame-img" alt="Newest still from the selected camera">
+          <svg id="frame-svg" aria-label="Monitor outlines"></svg>
+          <div class="hint hidden" id="frame-hint"></div>
+        </div>
+      </section>
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>Monitors</h2>
+          <div class="spacer"></div>
+          <button type="button" class="primary" id="add-device">Add monitor</button>
+        </div>
+        <div class="list" id="device-list"></div>
+        <form id="device-form" class="hidden" style="margin-top:16px;display:grid;gap:10px">
+          <h3 id="device-form-title">New monitor</h3>
+          <label class="field">Name (shown on charts) <input name="dev_name" required maxlength="255" placeholder="e.g. Brand X #2"></label>
+          <label class="field">Make / model <input name="model" maxlength="255" placeholder="e.g. Brand X AQ-100"></label>
+          <label class="row small"><input type="checkbox" name="is_own"> This is one of our own monitors</label>
+          <label class="field">ID in our cloud (optional) <input name="external_id" maxlength="255" placeholder="device serial / ID"></label>
+          <div class="row">
+            <button type="submit" class="primary" id="device-save">Next: click corners</button>
+            <button type="button" id="device-cancel">Cancel</button>
+            <div class="spacer"></div>
+            <button type="button" class="danger hidden" id="device-delete">Remove</button>
+          </div>
+        </form>
+      </aside>
+    </div>
+
+    <section class="panel hidden" id="screen-panel">
+      <div class="panel-head">
+        <h2 id="screen-title">Screen</h2>
+        <div class="spacer"></div>
+        <button type="button" id="test" class="primary">Test reading</button>
+      </div>
+      <div class="cal-layout">
+        <div>
+          <div class="stage" id="screen-stage">
+            <img id="screen-img" alt="Straightened screen of the selected monitor">
+            <svg id="screen-svg" aria-label="Number boxes"></svg>
+            <div class="hint" id="screen-hint">Drag a box around one number.</div>
+          </div>
+        </div>
+        <aside>
+          <div class="list" id="field-list"></div>
+          <form id="field-form" class="hidden" style="margin-top:12px;display:grid;gap:10px">
+            <h3 id="field-form-title">New number</h3>
+            <label class="field">What is it? <select name="metric" required></select></label>
+            <div class="form-grid">
+              <label class="field">Unit <input name="unit" maxlength="32"></label>
+              <label class="field">Label (optional) <input name="label" maxlength="64"></label>
+            </div>
+            <label class="field">Display type
+              <select name="recognizer">
+                <option value="sevenseg">Segment digits (LCD, calculator style)</option>
+                <option value="tesseract">Normal font (colour / TFT screen)</option>
+              </select>
+            </label>
+            <div class="form-grid">
+              <label class="field">Digit colour
+                <select name="polarity">
+                  <option value="auto">Detect</option>
+                  <option value="dark_on_light">Dark on light</option>
+                  <option value="light_on_dark">Light on dark</option>
+                </select>
+              </label>
+              <label class="field">Decimal places
+                <select name="decimals">
+                  <option value="0">0 (whole numbers)</option>
+                  <option value="1">1 (e.g. 23.5)</option>
+                  <option value="2">2 (e.g. 0.05)</option>
+                  <option value="3">3</option>
+                  <option value="auto">Detect the dot</option>
+                </select>
+              </label>
+              <label class="field">Slant (°) <input name="slant" type="number" step="1" min="-30" max="30" value="0"></label>
+              <label class="field">Lowest plausible <input name="min_value" type="number" step="any"></label>
+              <label class="field">Highest plausible <input name="max_value" type="number" step="any"></label>
+            </div>
+            <p class="muted small" style="margin:0">Values outside the plausible range go to the review queue. Segment digits often lean about 8°; set the slant if a reading keeps failing.</p>
+            <div class="row">
+              <button type="submit" class="primary">Save number</button>
+              <button type="button" id="field-cancel">Cancel</button>
+              <div class="spacer"></div>
+              <button type="button" class="danger hidden" id="field-delete">Remove</button>
+            </div>
+          </form>
+        </aside>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="test-panel">
+      <div class="panel-head"><h2>Test reading</h2><span class="muted small" id="test-info"></span></div>
+      <div class="result-grid" id="test-results"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Re-read past pictures</h2></div>
+      <p class="muted small" style="margin-top:0">After changing monitors or boxes, re-read stored pictures with the new settings. Readings a person already reviewed are kept.</p>
+      <div class="row">
+        <button type="button" data-reprocess="run">Since the current run started</button>
+        <button type="button" data-reprocess="24h">Last 24 hours</button>
+        <button type="button" data-reprocess="all">All pictures from this camera</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
