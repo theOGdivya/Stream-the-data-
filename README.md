@@ -45,9 +45,27 @@ on each monitor, alerts, and charts.
 | `docs/deploy.md` | Step-by-step server setup on Hostinger. |
 | `docs/test-protocol.md` | How to set up and run a side-by-side test so the data holds up in a white paper. |
 
-## Try it locally in 5 minutes (no webcam needed)
+## Try it on your computer (one command)
 
-The agent has a built-in **synthetic camera** that films two fake monitors whose numbers change.
+You need Python 3.11 or newer (python.org) and a copy of this repository. From the repository folder:
+
+```bash
+python demo.py
+```
+
+This installs everything into `demo-data/` (a few minutes the first time), starts the server, the worker and a
+**fake camera filming two fake monitors**, and opens <http://localhost:8000> (login `demo` / `demo`).
+One fake monitor is already set up; mark the other one yourself on the **Calibrate** page.
+
+To use a real webcam pointed at a real monitor:
+
+```bash
+python demo.py --webcam 0
+```
+
+Press Ctrl+C to stop. Delete `demo-data/` to start fresh. On Windows, use `py demo.py` if `python` isn't found.
+
+### Manual setup (what demo.py does)
 
 ```bash
 cd server
