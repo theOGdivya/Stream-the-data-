@@ -32,14 +32,14 @@ SEARCH_MARGIN = 0.35  # how far (share of screen size) the monitor may have move
 
 @dataclass
 class AlignResult:
-    status: str  # ok | adjusted | lost | unchecked
+    status: str  # ok | adjusted | lost | unchecked | kept (lost, but read fine where it last was)
     corners: list[list[float]]
     shift_px: float = 0.0
     inliers: int = 0
 
     def as_dict(self) -> dict:
         d = {"status": self.status, "shift_px": round(self.shift_px, 1), "inliers": self.inliers}
-        if self.status == "adjusted":
+        if self.status in ("adjusted", "kept"):
             d["corners"] = [[round(x, 1), round(y, 1)] for x, y in self.corners]
         return d
 

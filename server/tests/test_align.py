@@ -55,7 +55,8 @@ def _calibrate(client, boxes, ref_frame_id):
                       json={"name": "Brand X", "corners": SCENE_CORNERS, "ref_frame_id": ref_frame_id}).json()
     for metric, lo, hi in (("pm25", 0, 1000), ("co2", 300, 5000)):
         client.post(f"/api/devices/{dev['id']}/fields",
-                    json={"metric": metric, "box": boxes[metric], "min_value": lo, "max_value": hi})
+                    json={"metric": metric, "box": boxes[metric], "min_value": lo, "max_value": hi,
+                          "recognizer": "sevenseg"})
     return dev
 
 
@@ -122,6 +123,34 @@ def test_lost_monitor_goes_to_review(client, agent_client, app, settings):
         mgr.sync(db, int(time.time() * 1000))
         mgr.sync(db, int(time.time() * 1000) + 61_000)
         assert any(a.kind == "view_lost" for a in db.scalars(select(Alert)).all())
+
+
+def test_failed_match_keeps_readings_flowing(client, agent_client, app, settings, monkeypatch):
+    """Matching can fail without the camera moving (e.g. a big lighting change). If the numbers
+    still read cleanly where the monitor was, they are accepted and nothing goes to review."""
+    import aqserver.ocr_jobs as jobs
+    from aqserver.ocr.align import AlignResult
+
+    heartbeat(agent_client)
+    t0 = int(time.time() * 1000) - 60_000
+    ref, boxes = render_scene("37", "812", seed=1)
+    ref_id = upload(agent_client, jpeg(ref), captured_ms=t0).json()["id"]
+    dev = _calibrate(client, boxes, ref_id)
+    monkeypatch.setattr(jobs.ALIGNER, "align", lambda key, load_ref, gray, corners: AlignResult("lost", corners, inliers=3))
+    fid = upload(agent_client, jpeg(render_scene("41", "905", seed=2)[0]), captured_ms=t0 + 10_000).json()["id"]
+    process_pending(app.state.Session, settings)
+    r = _readings(client, fid)
+    assert (r["pm25"]["value"], r["pm25"]["status"]) == (41, "ok")
+    assert (r["co2"]["value"], r["co2"]["status"]) == (905, "ok")
+    with app.state.Session() as db:
+        assert db.get(Frame, fid).alignment[str(dev["id"])]["status"] == "kept"
+        assert db.get(Device, dev["id"]).align_status == "kept"
+        mgr = AlertManager(settings)
+        mgr.sync(db, int(time.time() * 1000))
+        mgr.sync(db, int(time.time() * 1000) + 61_000)
+        assert not any(a.kind == "view_lost" for a in db.scalars(select(Alert)).all())
+    acc = client.post(f"/api/devices/{dev['id']}/accept-alignment").json()
+    assert acc["ref_frame_id"] == fid and acc["corners"] == SCENE_CORNERS
 
 
 def test_monitors_marked_before_upgrade_get_a_reference(client, agent_client, app, settings):

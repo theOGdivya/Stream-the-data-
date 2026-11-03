@@ -50,6 +50,8 @@ class OcrOutput:
     confidence: float
     note: str | None
     binary: np.ndarray | None = None  # debug image, ink = white
+    support: int = 1  # how many clean-up methods gave this reading
+    extra: dict | None = None  # e.g. what each reader saw (Automatic mode)
 
 
 def binarize(crop: np.ndarray, polarity: str = "auto", threshold: int | None = None) -> np.ndarray | None:
@@ -132,6 +134,19 @@ def decode(bw: np.ndarray, decimals: int | str = 0) -> OcrOutput:
     keep = np.zeros(n, dtype=bool)
     for i in range(1, n):
         keep[i] = stats[i, cv2.CC_STAT_AREA] >= min_area
+    # The digits are the tallest things in the box. Drop anything wholly above or below
+    # them (labels such as "PM2.5" or "ug/m3" that got inside the box).
+    idx = [i for i in range(1, n) if keep[i]]
+    if idx:
+        hmax = max(int(stats[i, cv2.CC_STAT_HEIGHT]) for i in idx)
+        tall = [i for i in idx if stats[i, cv2.CC_STAT_HEIGHT] >= 0.35 * hmax]
+        btop = min(int(stats[i, cv2.CC_STAT_TOP]) for i in tall)
+        bbot = max(int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]) for i in tall)
+        margin = 0.1 * (bbot - btop)
+        for i in idx:
+            y, h = int(stats[i, cv2.CC_STAT_TOP]), int(stats[i, cv2.CC_STAT_HEIGHT])
+            if y + h < btop - margin or y > bbot + margin:
+                keep[i] = False
     mask = keep[labels]
     rows = np.where(mask.any(axis=1))[0]
     if rows.size == 0:
@@ -200,6 +215,8 @@ def decode(bw: np.ndarray, decimals: int | str = 0) -> OcrOutput:
             right_edges.append(x1)
             prev_x1 = x1
             continue
+        if w >= 0.3 * hd and ink_h < 0.55 * hd:
+            continue  # short and wide: unit text such as "ppm" next to the digits
         narrow_digit = False
         if w < 0.3 * hd:
             # A "1" is a plain vertical bar: every row's ink is about one stroke wide. A narrow
@@ -249,15 +266,47 @@ def decode(bw: np.ndarray, decimals: int | str = 0) -> OcrOutput:
     return OcrOutput(digits, conf, note, bw)
 
 
+TRUSTED = "otsu"  # the original method, tested most; any other needs a second method to agree
+
+
+def choose(candidates: list[tuple[str, OcrOutput]]) -> OcrOutput | None:
+    """Pick the reading the clean-up variants agree on. Agreement raises confidence; a lone
+    reading from a less-tested method, or a confident disagreement, sends it to review."""
+    valid = [(n, c) for n, c in candidates if c.text and "?" not in c.text]
+    if not valid:
+        return max((c for _, c in candidates), key=lambda c: c.confidence, default=None)
+    texts = {c.text for _, c in valid}
+    # Most methods agreeing wins; then the trusted method; then confidence.
+    def score(t):
+        members = [(n, c) for n, c in valid if c.text == t and c.confidence >= 0.3]
+        return (len(members), any(n == TRUSTED for n, _ in members),
+                max((c.confidence for _, c in valid if c.text == t), default=0.0))
+    best_text = max(texts, key=score)
+    group = [(n, c) for n, c in valid if c.text == best_text]
+    name, best = max(group, key=lambda x: x[1].confidence)
+    conf = min(1.0, best.confidence + 0.1 * (len(group) - 1))
+    rivals = [t for t in texts if t != best_text]
+    rival_conf = max((c.confidence for _, c in valid if c.text in rivals), default=0.0)
+    rival_support = max((sum(1 for _, c in valid if c.text == t and c.confidence >= 0.6) for t in rivals), default=0)
+    support = len({n.removesuffix("-word") for n, _ in group})
+    if len(group) == 1 and name != TRUSTED:
+        return OcrOutput(best.text, min(conf, 0.55), "only one reading method was sure", best.binary, support)
+    if rival_conf >= 0.8 and rival_support >= len(group):
+        return OcrOutput(best.text, min(conf, 0.5), "reading methods disagree", best.binary, support)
+    return OcrOutput(best.text, conf, best.note, best.binary, support)
+
+
 def read(crop: np.ndarray, options: dict) -> OcrOutput:
-    bw = binarize(crop, options.get("polarity", "auto"), options.get("threshold"))
-    if bw is None:
-        return OcrOutput("", 0.0, "blank display", None)
-    bw = deslant(bw, float(options.get("slant") or 0))
+    from .prep import variants
+
     decimals = options.get("decimals", 0)
-    if decimals not in ("auto",):
+    if decimals != "auto":
         try:
             decimals = int(decimals or 0)
         except (TypeError, ValueError):
             decimals = 0
-    return decode(bw, decimals)
+    slant = float(options.get("slant") or 0)
+    outs = [(name, decode(deslant(bw, slant), decimals))
+            for name, bw in variants(crop, options.get("polarity", "auto"), options.get("threshold"))]
+    best = choose(outs)
+    return best if best is not None else OcrOutput("", 0.0, "blank display", None)

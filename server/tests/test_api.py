@@ -46,7 +46,8 @@ def calibrate(client, boxes, camera_id="cam1"):
     dev = r.json()
     for metric, lo, hi in (("pm25", 0, 1000), ("co2", 300, 5000)):
         r = client.post(f"/api/devices/{dev['id']}/fields",
-                        json={"metric": metric, "box": boxes[metric], "unit": "x", "min_value": lo, "max_value": hi})
+                        json={"metric": metric, "box": boxes[metric], "unit": "x", "min_value": lo, "max_value": hi,
+                              "recognizer": "sevenseg"})
         assert r.status_code == 200, r.text
     return dev
 

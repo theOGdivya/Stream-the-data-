@@ -87,7 +87,7 @@ class FieldIn(BaseModel):
     label: str | None = None
     unit: str | None = None
     box: list[float]
-    recognizer: Literal["sevenseg", "tesseract"] = "sevenseg"
+    recognizer: Literal["auto", "sevenseg", "tesseract"] = "auto"
     options: FieldOptions = FieldOptions()
     min_value: float | None = None
     max_value: float | None = None
@@ -103,7 +103,7 @@ class FieldPatch(BaseModel):
     label: str | None = None
     unit: str | None = None
     box: list[float] | None = None
-    recognizer: Literal["sevenseg", "tesseract"] | None = None
+    recognizer: Literal["auto", "sevenseg", "tesseract"] | None = None
     options: FieldOptions | None = None
     min_value: float | None = None
     max_value: float | None = None
@@ -257,11 +257,13 @@ def accept_alignment(device_id: int, db: Session = Depends(get_db), user: str = 
     d = db.get(Device, device_id)
     if d is None or not d.active:
         raise HTTPException(404, "device not found")
-    if d.align_status != "adjusted" or not d.align_corners or d.align_ms is None:
+    # "kept": the picture no longer matches the reference (often a big lighting change) but the
+    # numbers still read fine where the monitor was last seen; accepting makes it the new reference.
+    if d.align_status not in ("adjusted", "kept") or d.align_ms is None or (d.align_status == "adjusted" and not d.align_corners):
         raise HTTPException(400, "nothing to accept: this monitor has not shifted")
     frame = db.scalars(select(Frame).where(Frame.camera_id == d.camera_id, Frame.captured_ms == d.align_ms).limit(1)).first()
     before = {"corners": d.corners, "ref_frame_id": d.ref_frame_id}
-    d.corners = [[round(x, 1), round(y, 1)] for x, y in d.align_corners]
+    d.corners = [[round(x, 1), round(y, 1)] for x, y in (d.align_corners or d.corners)]
     d.warp_w, d.warp_h = warp_size(d.corners)
     d.ref_frame_id = frame.id if frame else _reference_frame_id(db, d.camera_id, None)
     _reset_alignment(d)
@@ -352,6 +354,7 @@ def ocr_test(body: OcrTestIn, db: Session = Depends(get_db), settings: Settings 
     specs = device_specs(db, body.camera_id)
     img = load_image(settings.data_dir / frame.path)
     results, align = read_frame(db, settings, frame, img, specs, debug=True)
+    recognizer = {f.id: f.recognizer for s in specs for f in s.fields}
     return {
         "frame_id": frame.id,
         "captured_ms": frame.captured_ms,
@@ -359,6 +362,7 @@ def ocr_test(body: OcrTestIn, db: Session = Depends(get_db), settings: Settings 
         "results": [
             {"device_id": r.device_id, "field_id": r.field_id, "metric": r.metric, "raw_text": r.raw_text,
              "value": r.value, "confidence": r.confidence, "status": r.status, "note": r.note,
+             "recognizer": recognizer.get(r.field_id), "candidates": r.candidates,
              "crop": _png_data_url(r.crop), "binary": _png_data_url(r.binary)}
             for r in results
         ],

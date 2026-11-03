@@ -149,6 +149,7 @@ function alignTag(d) {
   const a = d.alignment || {};
   if (a.status === 'lost') return el('span', { class: 'pill bad' }, 'Not found');
   if (a.status === 'adjusted') return el('span', { class: 'pill warn' }, `Shifted ${Math.round(a.shift_px)} px`);
+  if (a.status === 'kept') return el('span', { class: 'pill' }, 'Picture changed');
   return null;
 }
 
@@ -164,6 +165,13 @@ function renderAlignment(d) {
         el('strong', {}, `Moved ${Math.round(a.shift_px)} px since it was marked`), when,
         el('p', { class: 'small', style: 'margin:4px 0 8px' }, 'Readings are being corrected automatically (orange dashed outline = where it is now). If the camera or monitor was moved on purpose, accept the new position.'),
         el('button', { type: 'button', class: 'primary', onclick: () => acceptAlignment(d) }, 'Accept new position'))));
+  } else if (a.status === 'kept') {
+    box.replaceChildren(el('div', { class: 'alert', style: 'border-color:var(--border)' },
+      el('span', { class: 'icon', 'aria-hidden': 'true' }, 'i'),
+      el('div', {},
+        el('strong', {}, 'The picture looks different from when this monitor was marked'), when,
+        el('p', { class: 'small', style: 'margin:4px 0 8px' }, 'Usually the room light or screen brightness changed. The numbers still read fine at the marked spot, so readings carry on. If the setup is fine, make the newest picture the reference.'),
+        el('button', { type: 'button', class: 'primary', onclick: () => acceptAlignment(d) }, 'Use newest picture as reference'))));
   } else if (a.status === 'lost') {
     box.replaceChildren(el('div', { class: 'alert', role: 'alert' },
       el('span', { class: 'icon', 'aria-hidden': 'true' }, '!'),
@@ -407,7 +415,7 @@ function renderFields() {
   list.replaceChildren(...(d.fields.length ? d.fields.map(f => el('button', {
     type: 'button', class: 'list-item', 'aria-selected': String(f.id === state.fieldId), onclick: () => selectField(f.id),
   }, el('strong', { style: 'flex:1' }, f.label || metricLabel(f.metric, state.catalog)),
-  el('span', { class: 'muted small' }, f.recognizer === 'sevenseg' ? 'segment digits' : 'normal font'))) : [el('p', { class: 'muted small' }, 'No numbers yet. Drag a box on the screen.')]));
+  el('span', { class: 'muted small' }, READER_NAMES[f.recognizer] || f.recognizer))) : [el('p', { class: 'muted small' }, 'No numbers yet. Drag a box on the screen.')]));
   $('#screen-hint').textContent = state.fieldId ? 'Drag a new box to move this number, then save.' : 'Drag a box around one number.';
 }
 
@@ -429,7 +437,7 @@ function fillFieldForm(f) {
   const def = state.catalog.metrics[metric] || {};
   form.unit.value = f ? f.unit || '' : def.unit || '';
   form.label.value = f ? f.label || '' : '';
-  form.recognizer.value = f ? f.recognizer : 'sevenseg';
+  form.recognizer.value = f ? f.recognizer : 'auto';
   const o = f ? f.options || {} : {};
   form.polarity.value = o.polarity || 'auto';
   form.decimals.value = String(o.decimals ?? (metric === 'temp' ? 1 : 0));
@@ -529,6 +537,33 @@ $('#field-delete').addEventListener('click', async () => {
 
 // --- test & reprocess -------------------------------------------------------------------------
 
+const READER_NAMES = { auto: 'automatic', sevenseg: 'segment digits', tesseract: 'normal font' };
+
+// In Automatic mode both readers look at the number. When they saw different things, one click
+// tells the server which kind of display this is, and every later picture is read that way.
+function whichNumber(r) {
+  const c = r.candidates;
+  if (r.recognizer !== 'auto' || !c || c.sevenseg === c.tesseract) return null;
+  const choose = async recognizer => {
+    try {
+      await api(`/api/fields/${r.field_id}`, { method: 'PATCH', body: { recognizer } });
+      toast(`Display type set to ${READER_NAMES[recognizer]}`);
+      await refreshAll();
+      if (state.fieldId === r.field_id) selectField(r.field_id);
+      await runTest();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+  const options = [['sevenseg', c.sevenseg], ['tesseract', c.tesseract]].filter(([, v]) => v);
+  if (!options.length) return null;
+  return el('div', { class: 'which-number' },
+    el('span', {}, 'Which number is on the screen?'),
+    ...options.map(([rec, v]) => el('button', { type: 'button', onclick: () => choose(rec) },
+      el('strong', { class: 'num' }, v), ` (${READER_NAMES[rec]})`)),
+    el('span', { class: 'muted small' }, 'Neither? Make the box tighter around the digits and test again.'));
+}
+
 async function runTest() {
   if (!state.frame) return;
   const panel = $('#test-panel');
@@ -544,7 +579,8 @@ async function runTest() {
         el('span', { class: `pill ${r.status === 'ok' ? 'good' : 'warn'}` }, r.status === 'ok' ? 'Accepted' : 'Would need review'),
         el('span', {}, 'Read: ', el('strong', { class: 'num' }, r.raw_text || '(nothing)')),
         el('span', { class: 'muted' }, `confidence ${Math.round(r.confidence * 100)}%`),
-        r.note ? el('span', { class: 'flag' }, r.note) : null),
+        r.note ? el('span', { class: 'flag' }, r.note) : null,
+        whichNumber(r)),
       r.crop ? el('figure', { style: 'margin:0' }, el('img', { src: r.crop, alt: 'Camera crop' }), el('figcaption', { class: 'muted small' }, 'Camera')) : el('span'),
       r.binary ? el('figure', { style: 'margin:0' }, el('img', { src: r.binary, alt: 'What the reader sees' }), el('figcaption', { class: 'muted small' }, 'What the reader sees (digits should be white and complete)')) : el('span'),
     )) : [el('p', { class: 'muted' }, 'No numbers marked on this camera yet.')]));

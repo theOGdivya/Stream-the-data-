@@ -68,19 +68,33 @@ def align_specs(db: Session, settings: Settings, frame: Frame, img: np.ndarray,
 
         key = (spec.id, spec.ref_frame_id, tuple(tuple(c) for c in spec.corners))
         res = ALIGNER.align(key, load_ref, gray, spec.corners)
+        if res.status == "lost":
+            # Matching can fail when the room light or screen brightness changes a lot, while the
+            # camera has not moved at all. Keep reading where the monitor was last seen.
+            d = db.get(Device, spec.id)
+            last = d.align_corners if d is not None and d.align_corners else spec.corners
+            res = AlignResult("lost", last, (d.align_shift_px or 0.0) if d is not None else 0.0, res.inliers)
         results[spec.id] = res
-        out.append(replace(spec, corners=res.corners) if res.status == "adjusted" else spec)
+        out.append(replace(spec, corners=res.corners) if res.status in ("adjusted", "lost") else spec)
     return out, results
 
 
 def read_frame(db: Session, settings: Settings, frame: Frame, img: np.ndarray, specs: list[DeviceSpec],
                debug: bool = False) -> tuple[list[FieldResult], dict[int, AlignResult]]:
-    """Align, then read every field. Fields on a monitor that could not be found go to review."""
+    """Align, then read every field. When a monitor could not be matched, its numbers are still
+    read where it was last seen: if every one of them reads cleanly the reading stands (status
+    "kept"); otherwise they all go to review."""
     aligned, align = align_specs(db, settings, frame, img, specs)
     results = run_frame(img, aligned, settings.review_confidence, debug=debug)
-    for r in results:
-        if align[r.device_id].status == "lost":
-            r.status, r.note = REVIEW, LOST_NOTE
+    for dev_id, res in list(align.items()):
+        if res.status != "lost":
+            continue
+        mine = [r for r in results if r.device_id == dev_id]
+        if mine and all(r.status == "ok" for r in mine):
+            align[dev_id] = AlignResult("kept", res.corners, res.shift_px, res.inliers)
+        else:
+            for r in mine:
+                r.status, r.note = REVIEW, LOST_NOTE
     return results, align
 
 
@@ -111,9 +125,11 @@ def process_frame(db: Session, frame: Frame, settings: Settings, specs: list[Dev
         d = db.get(Device, dev_id)
         if d is not None and (d.align_ms is None or frame.captured_ms >= d.align_ms):
             d.align_status = res.status
+            d.align_ms = frame.captured_ms
+            if res.status in ("kept", "lost"):
+                continue  # keep the last known position
             d.align_shift_px = round(res.shift_px, 1)
             d.align_corners = res.corners if res.status == "adjusted" else None
-            d.align_ms = frame.captured_ms
 
     existing = {fid for (fid,) in db.execute(select(Reading.field_id).where(Reading.frame_id == frame.id)).all()}
     added = 0

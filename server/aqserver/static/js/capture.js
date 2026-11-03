@@ -4,6 +4,8 @@
 import { $, ago, api, el, renderTopbar, toast } from './common.js';
 
 renderTopbar('cameras.html');
+// Recording lives in this tab: other pages open in a new tab so it keeps going.
+for (const a of document.querySelectorAll('.topbar a')) { a.target = '_blank'; a.rel = 'noopener'; }
 
 const form = $('#form');
 const video = $('#video');
@@ -220,7 +222,8 @@ async function heartbeat() {
   S.lastHeartbeat = Date.now();
   const st = S.track?.getSettings() || {};
   const connected = S.track?.readyState === 'live';
-  const error = !connected ? 'camera not available' : document.hidden ? 'tab is hidden: pictures may be delayed' : null;
+  const late = S.lastStill && Date.now() - S.lastStill > 2.5 * S.cam.interval * 1000;
+  const error = !connected ? 'camera not available' : late ? 'pictures are late (recorder tab hidden or computer busy)' : null;
   const body = {
     agent_id: S.agentId, hostname: navigator.userAgent.slice(0, 200), version: 'browser', agent_time_ms: Date.now(),
     backlog: await queue.count(), disk_free_bytes: null,
@@ -308,16 +311,18 @@ async function start() {
   S.cam = { id: ids[key], name, interval: Number(form.interval.value) };
   S.recording = true;
   S.nextStill = 0;
+  mem.set('active', true);
   await keepAwake();
   await heartbeat();
   for (const n of [form.computer, form.device, form.name, form.interval]) n.disabled = true;
   $('#start').classList.add('hidden');
   $('#stop').classList.remove('hidden');
-  toast('Recording. It now appears on the Live page.');
+  toast('Recording. Keep this tab open; other pages open in a new tab.');
 }
 
 function stop() {
   S.recording = false;
+  mem.set('active', false);
   S.live = false;
   S.wakeLock?.release?.();
   for (const n of [form.computer, form.device, form.name, form.interval]) n.disabled = false;
@@ -342,4 +347,9 @@ window.addEventListener('beforeunload', e => { if (S.recording) { e.preventDefau
   upload(); // send anything left over from last time
   await listCameras();
   renderStats();
+  // Was this page recording when it was closed or reloaded? Carry on by itself.
+  if (mem.get('active') && form.computer.value && form.name.value && !$('#start').disabled) {
+    await start();
+    toast('Recording resumed');
+  }
 })();
