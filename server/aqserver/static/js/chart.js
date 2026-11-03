@@ -57,29 +57,23 @@ export class MetricChart {
     // Join all series on one x axis. undefined = no point here (line continues);
     // null = a real gap (camera offline), which breaks the line.
     const bucket = resp.bucket_ms;
-    const xsSet = new Set();
-    const maps = styled.map(s => {
-      const m = new Map();
+    const maps = styled.map(s => new Map(s.points.map(p => [p[0], p[1]])));
+    const xs = [...new Set(styled.flatMap(s => s.points.map(p => p[0])))].sort((a, b) => a - b);
+    // Every x inside a real hole in a series (camera offline, readings excluded) is null, so
+    // no line is drawn across it; x values that merely fall between this series' regular
+    // points (another series has data there) stay undefined and the line continues.
+    const columns = styled.map(s => {
       const pts = s.points;
-      for (let i = 0; i < pts.length; i++) {
-        m.set(pts[i][0], pts[i][1]);
-        xsSet.add(pts[i][0]);
-        if (i > 0) {
-          const gap = pts[i][0] - pts[i - 1][0];
-          // Break the line where data is missing (camera offline, readings excluded) instead
-          // of drawing a straight line that hides the hole.
-          const typical = Math.max(bucket, medianSpacing(pts));
-          if (gap > 3 * typical) {
-            const mid = pts[i - 1][0] + Math.round(gap / 2);
-            m.set(mid, null);
-            xsSet.add(mid);
-          }
-        }
-      }
-      return m;
+      const limit = 3 * Math.max(bucket, medianSpacing(pts));
+      let j = 0;
+      return xs.map(x => {
+        while (j < pts.length && pts[j][0] < x) j++;
+        if (j < pts.length && pts[j][0] === x) return pts[j][1];
+        if (j === 0 || j === pts.length) return undefined;
+        return pts[j][0] - pts[j - 1][0] > limit ? null : undefined;
+      });
     });
-    const xs = [...xsSet].sort((a, b) => a - b);
-    const data = [xs.map(x => x / 1000), ...maps.map(m => xs.map(x => (m.has(x) ? m.get(x) : undefined)))];
+    const data = [xs.map(x => x / 1000), ...columns];
 
     if (this.tableMode) { this.renderTable(xs, styled, maps, unit, metric); return; }
 

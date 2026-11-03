@@ -53,12 +53,17 @@ class Camera(Base):
     status: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     status_ms: Mapped[int | None] = mapped_column(BigInteger)
     created_ms: Mapped[int] = mapped_column(BigInteger, default=now_ms)
+    # Store only the marked monitors: the capture computer blacks out everything else
+    # (a full picture is still kept every ``full_every_s`` seconds for context).
+    mask_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    full_every_s: Mapped[int | None] = mapped_column(Integer, default=300)
 
 
 class TestRun(Base):
     """A side-by-side test (e.g. "Office, 7 days, March"). Frames belong to it by time."""
 
     __tablename__ = "test_runs"
+    __test__ = False  # not a pytest test class
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     notes: Mapped[str | None] = mapped_column(Text)
@@ -85,6 +90,9 @@ class Frame(Base):
     brightness: Mapped[float | None] = mapped_column(Float)
     ocr_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     ocr_error: Mapped[str | None] = mapped_column(Text)
+    masked: Mapped[bool | None] = mapped_column(Boolean, default=False)  # areas outside monitors blacked out
+    # Per device: {"<device_id>": {"status", "shift_px", "inliers", "corners"}} from camera-shift detection.
+    alignment: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class Device(Base):
@@ -103,6 +111,13 @@ class Device(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_ms: Mapped[int] = mapped_column(BigInteger, default=now_ms)
     updated_ms: Mapped[int] = mapped_column(BigInteger, default=now_ms)
+    position: Mapped[int | None] = mapped_column(Integer)  # order in the lined-up strip
+    # Camera-shift detection: the picture the corners were marked on, and the latest check.
+    ref_frame_id: Mapped[int | None] = mapped_column(Integer)
+    align_status: Mapped[str | None] = mapped_column(String(16))  # ok | adjusted | lost
+    align_shift_px: Mapped[float | None] = mapped_column(Float)
+    align_corners: Mapped[list[list[float]] | None] = mapped_column(JSON)
+    align_ms: Mapped[int | None] = mapped_column(BigInteger)  # capture time of the frame last checked
 
 
 class Field(Base):

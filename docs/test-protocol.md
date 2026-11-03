@@ -37,6 +37,8 @@ the test is set up. This checklist covers both.
 
 1. Open **Calibrate**. Mark each monitor and its numbers, press **Test reading**, and fix anything marked "would need review".
 2. Set realistic plausible ranges per number (e.g. PM2.5 0–1000), so wild misreads go to review.
+   Optionally tick **Store only the marked monitors** for each camera, but only once every monitor in its view is marked.
+   Anything not marked is blacked out and can't be recovered.
 3. On **Data & exports**, start a **test run**. Put the details in the notes: room, device models, firmware versions, serial numbers, positions, anything unusual.
 4. Check the **Live** page: every camera online, readings updating, "stills received" near 100%.
 
@@ -45,10 +47,20 @@ the test is set up. This checklist covers both.
 - Check the Live page once or twice a day, or set `ALERT_WEBHOOK_URL` to be messaged when something breaks.
 - Work through the **Review** queue regularly. A few minutes a day beats hundreds of items at the end.
 - Note any interventions (doors opened, monitor moved, power cut) in the run notes with the time.
+- If an alert says a camera view **shifted**, readings are being corrected automatically. Check that nothing else
+  changed (e.g. a monitor was picked up and put back), then press **Accept new position** on Calibrate. If a monitor
+  is **not found**, its readings go to review until you fix the setup or re-mark its corners.
+- **Lined up → Go back in time** is the quickest way to scan a long test or show someone exactly what happened at a given moment.
 
 ## Ending the run
 
 1. **Stop** the run on the Data page.
 2. Clear the review queue for the run period.
 3. Export the **readings CSV**, the **pictures manifest** and the **reference CSV** for the run, and keep them with the backup.
-4. From **Review**, record the share of readings accepted automatically, corrected and rejected. It belongs in the methods section, together with the OCR error rate from your own monitor.
+4. Open **Results** for the run. Choose the reading, the averaging period (1 hour and 24 hours are usual for PM2.5)
+   and the reference. You get:
+   - the statistics table, time series and scatter plots;
+   - reading quality, and the own-monitor accuracy check;
+   - a draft methods paragraph.
+
+   Download the CSVs, or print the page to PDF. For a figure of the setup, use **Lined up → Download as image**.

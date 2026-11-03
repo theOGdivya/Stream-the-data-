@@ -84,7 +84,7 @@ def wait_for(check, seconds: float, what: str) -> None:
 
 
 def write_agent_config(source, port: int) -> Path:
-    name = "Fake monitors (demo)" if source == "synthetic" else f"Webcam {source}"
+    name = "Fake monitors (demo)" if str(source).startswith("synthetic") else f"Webcam {source}"
     cfg = DEMO / "agent.yaml"
     cfg.write_text(
         f"server_url: http://127.0.0.1:{port}\n"
@@ -127,6 +127,8 @@ def preset_fake_lcd(py: Path, port: int) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--webcam", type=int, metavar="N", help="use webcam number N instead of the fake camera")
+    ap.add_argument("--bump", action="store_true",
+                    help="fake camera gets knocked after 2 minutes, to watch shift detection correct it")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-browser", action="store_true", help="don't open the browser")
     args = ap.parse_args()
@@ -140,7 +142,7 @@ def main() -> int:
         signal.signal(signal.SIGTERM, _stop)
 
     py = ensure_environment()
-    source = "synthetic" if args.webcam is None else args.webcam
+    source = ("synthetic-bump" if args.bump else "synthetic") if args.webcam is None else args.webcam
     agent_cfg = write_agent_config(source, args.port)
     server_env = {**os.environ, "DATA_DIR": str(DEMO / "server"), "AGENT_TOKEN": TOKEN,
                   "DASHBOARD_USERS": f"{USER}:{PASSWORD}"}
@@ -159,7 +161,7 @@ def main() -> int:
         print("Starting the camera ...")
         start("agent", [str(py), "-m", "aqagent", "run", "-c", str(agent_cfg)], ROOT / "agent", dict(os.environ))
         wait_for(lambda: api(args.port, f"/api/cameras/{CAMERA_ID}/latest-frame"), 60, "the first camera picture")
-        if source == "synthetic":
+        if str(source).startswith("synthetic"):
             preset_fake_lcd(py, args.port)
 
         url = f"http://localhost:{args.port}"

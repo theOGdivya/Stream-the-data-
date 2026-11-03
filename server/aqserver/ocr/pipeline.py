@@ -49,6 +49,7 @@ class DeviceSpec:
     warp_w: int
     warp_h: int
     fields: list[FieldSpec]
+    ref_frame_id: int | None = None  # picture the corners were marked on (for shift detection)
 
 
 @dataclass

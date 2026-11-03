@@ -68,6 +68,9 @@ KVM 2 has about 100 GB of disk. A 1080p still is about 150–300 KB.
 | 3 cameras, still every 10 s | ~5–7 GB | ~75–110 GB, too much for 100 GB |
 
 To stay within the disk:
+- Turn on **Store only the marked monitors** for each camera (Calibrate page) once its monitors are marked. The
+  saving depends on how much of the picture is background: in the demo, where monitors fill most of the view, it
+  was about 20%.
 - Frame several monitors per camera (3–5 on a shelf is fine).
 - Use `still_interval_s: 15` or `30` if the monitors only update every 30–60 s anyway.
 - Archive finished tests off the server.
@@ -80,8 +83,8 @@ The dashboard warns when the disk passes 90%.
 cd ~/aq && git pull && cd deploy && docker compose up -d --build
 ```
 
-Database tables are created automatically. This first version has no migration tool. If a future change
-alters existing tables, it will come with a migration step.
+Database tables are created automatically, and new optional columns from newer versions are added on start.
+There is no full migration tool yet. If a future change alters existing columns, it will come with a migration step.
 
 ## Useful commands
 

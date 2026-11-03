@@ -40,3 +40,25 @@ def init_db(engine: Engine) -> None:
     from . import models  # noqa: F401  (registers tables)
 
     Base.metadata.create_all(engine)
+    add_missing_columns(engine)
+
+
+def add_missing_columns(engine: Engine) -> list[str]:
+    """Upgrade older databases in place: add any nullable column a newer version of the
+    models defines but the existing table lacks. Only additive changes are handled."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    added = []
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing or not col.nullable:
+                    continue
+                coltype = col.type.compile(dialect=engine.dialect)
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {coltype}'))
+                added.append(f"{table.name}.{col.name}")
+    return added

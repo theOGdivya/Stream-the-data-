@@ -114,7 +114,8 @@ function toggleTheme() {
 
 export function renderTopbar(active) {
   initTheme();
-  const pages = [['index.html', 'Live'], ['calibrate.html', 'Calibrate'], ['review.html', 'Review'], ['data.html', 'Data & exports']];
+  const pages = [['index.html', 'Live'], ['lined.html', 'Lined up'], ['calibrate.html', 'Calibrate'], ['review.html', 'Review'],
+    ['results.html', 'Results'], ['data.html', 'Data & exports']];
   const reviewCount = el('span', { class: 'count hidden', id: 'review-count' });
   const nav = el('nav', { class: 'nav', 'aria-label': 'Main' },
     pages.map(([href, label]) => el('a', { href, 'aria-current': href === active ? 'page' : null }, label, href === 'review.html' ? reviewCount : null)));

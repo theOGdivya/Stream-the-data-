@@ -74,7 +74,11 @@ def _number(img, text, box, color, cells):
 class SyntheticSource:
     """Mimics cv2.VideoCapture: grab()/retrieve()/read()/release()/isOpened()/get()."""
 
-    def __init__(self, fps: float = 10.0, update_every_s: float = 5.0, seed: int | None = None):
+    def __init__(self, fps: float = 10.0, update_every_s: float = 5.0, seed: int | None = None,
+                 bump_after_s: float | None = None):
+        """``bump_after_s``: after this many seconds the "camera gets knocked": the whole view
+        shifts by about 30 px and turns 1.5 degrees, to demonstrate shift detection."""
+        self.bump_at = time.time() + bump_after_s if bump_after_s else None
         self.fps = fps
         self.update_every_s = update_every_s
         self.rng = random.Random(seed)
@@ -152,6 +156,11 @@ class SyntheticSource:
             warped = cv2.warpPerspective(screen, m, (W, H))
             mask = cv2.warpPerspective(np.full((sh, sw), 255, np.uint8), m, (W, H)) > 0
             frame[mask] = warped[mask]
+        if self.bump_at and time.time() >= self.bump_at:
+            m = cv2.getRotationMatrix2D((W / 2, H / 2), 1.5, 1.0)
+            m[0, 2] += 26
+            m[1, 2] += 14
+            frame = cv2.warpAffine(frame, m, (W, H), borderValue=(70, 62, 55))
         noise = np.random.default_rng().normal(0, 3, frame.shape)
         cv2.putText(frame, time.strftime("%H:%M:%S"), (20, 690), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (230, 230, 230), 2)
         return np.clip(frame + noise, 0, 255).astype(np.uint8)

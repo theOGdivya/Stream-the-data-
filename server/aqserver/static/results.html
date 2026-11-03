@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Results</title>
+  <link rel="stylesheet" href="vendor/uplot-1.6.31.min.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/uplot-1.6.31.min.js"></script>
+  <script type="module" src="js/results.js"></script>
+</head>
+<body>
+  <main>
+    <section class="panel no-print">
+      <div class="panel-head"><h1>Results</h1><span class="small muted">turn a finished test into report material</span></div>
+      <form id="controls" class="form-grid">
+        <label class="field">Test run <select name="run"></select></label>
+        <label class="field custom hidden">From <input type="datetime-local" name="from"></label>
+        <label class="field custom hidden">To <input type="datetime-local" name="to"></label>
+        <label class="field">Reading <select name="metric"></select></label>
+        <label class="field">Average over
+          <select name="avg">
+            <option value="60">1 minute</option>
+            <option value="300">5 minutes</option>
+            <option value="900">15 minutes</option>
+            <option value="3600" selected>1 hour</option>
+            <option value="86400">24 hours</option>
+          </select>
+        </label>
+        <label class="field">Compare against <select name="reference"></select></label>
+        <div class="row">
+          <button type="submit" class="primary">Update</button>
+          <button type="button" id="print">Print / save as PDF</button>
+        </div>
+      </form>
+      <p class="small muted" style="margin:8px 0 0">Only readings accepted automatically, or confirmed or corrected in Review, are used.
+        PM2.5 sensor evaluations usually report 1-hour and 24-hour averages.</p>
+    </section>
+
+    <section class="panel" id="summary"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Agreement with the reference</h2>
+        <div class="spacer"></div>
+        <span class="row no-print" id="downloads"></span>
+      </div>
+      <div class="table-wrap"><table id="stats"></table></div>
+      <p class="small muted" id="stats-help" style="margin-bottom:0"></p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2 id="ts-title">Over time</h2>
+        <div class="spacer"></div>
+        <label class="row small no-print"><input type="checkbox" id="table-mode"> Show as table</label>
+      </div>
+      <div id="chart"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Each monitor against the reference</h2></div>
+      <p class="small muted" style="margin-top:0">Each dot is one averaging period. Dashed grey line: perfect agreement (1:1). Coloured line: fitted regression.</p>
+      <div class="scatter-grid" id="scatter"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Reading quality</h2></div>
+      <div id="quality"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Methods (draft text)</h2><div class="spacer"></div>
+        <button type="button" class="no-print" id="copy">Copy text</button></div>
+      <div class="methods" id="methods"></div>
+    </section>
+  </main>
+</body>
+</html>

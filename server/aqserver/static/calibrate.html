@@ -21,6 +21,14 @@
         <li>Select the monitor. On its straightened screen, <strong>drag a box tightly around one number</strong> (digits only, no labels or units) and say what it is.</li>
         <li><strong>Test reading</strong> to check every number, then <strong>re-read past pictures</strong> so earlier stills use the new settings.</li>
       </ol>
+      <div id="storage-box" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="row">
+          <label class="row"><input type="checkbox" id="mask-enabled"> <strong>Store only the marked monitors</strong></label>
+          <label class="row small">Keep a full picture every <input type="number" id="full-every" min="1" max="1440" style="width:70px"> min</label>
+        </div>
+        <p class="small muted" style="margin:6px 0 0" id="mask-note"></p>
+        <p class="small muted" style="margin:2px 0 0">Saves storage and keeps the stored evidence to the point. Turn it on only after every monitor on this camera is marked.</p>
+      </div>
     </section>
 
     <div class="cal-layout">
@@ -45,6 +53,7 @@
           <label class="field">Make / model <input name="model" maxlength="255" placeholder="e.g. Brand X AQ-100"></label>
           <label class="row small"><input type="checkbox" name="is_own"> This is one of our own monitors</label>
           <label class="field">ID in our cloud (optional) <input name="external_id" maxlength="255" placeholder="device serial / ID"></label>
+          <div id="align-box"></div>
           <div class="row">
             <button type="submit" class="primary" id="device-save">Next: click corners</button>
             <button type="button" id="device-cancel">Cancel</button>
