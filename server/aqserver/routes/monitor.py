@@ -14,7 +14,6 @@ from ..db import now_ms
 from ..deps import audit, current_user, get_db, get_live, get_settings
 from ..live import LiveHub
 from ..models import (
-    GOOD_STATUSES,
     REVIEW,
     Agent,
     Alert,
@@ -26,20 +25,10 @@ from ..models import (
     ReferenceReading,
     TestRun,
 )
+from ..series import bucketed, choose_bucket_ms
 from ..storage import disk_usage
 
 router = APIRouter(prefix="/api", tags=["monitor"])
-
-NICE_BUCKETS_S = [1, 5, 10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 21600, 43200, 86400]
-
-
-def choose_bucket_ms(span_ms: int, max_points: int) -> int:
-    want = span_ms / max(1, max_points)
-    for s in NICE_BUCKETS_S:
-        if s * 1000 >= want:
-            return s * 1000
-    return NICE_BUCKETS_S[-1] * 1000
-
 
 def _run_dict(r: TestRun | None) -> dict | None:
     if r is None:
@@ -83,11 +72,13 @@ def overview(
                 "status": r.status, "confidence": r.confidence, "note": r.note}
 
     hour_ago = now - 3_600_000
-    frames_last_hour = dict(
-        db.execute(
-            select(Frame.camera_id, func.count()).where(Frame.captured_ms >= hour_ago).group_by(Frame.camera_id)
-        ).all()
-    )
+    frames_last_hour, avg_size = {}, {}
+    for cam_id, n, avg in db.execute(
+        select(Frame.camera_id, func.count(), func.avg(Frame.size_bytes))
+        .where(Frame.captured_ms >= hour_ago).group_by(Frame.camera_id)
+    ).all():
+        frames_last_hour[cam_id] = n
+        avg_size[cam_id] = int(avg) if avg is not None else None
     cameras = []
     for cam in db.scalars(select(Camera).order_by(Camera.id)).all():
         status = cam.status or {}
@@ -107,6 +98,7 @@ def overview(
                 continue
             cam_devices.append({
                 "id": d.id, "name": d.name, "model": d.model, "is_own": d.is_own, "external_id": d.external_id,
+                "alignment": {"status": d.align_status, "shift_px": d.align_shift_px, "checked_ms": d.align_ms},
                 "fields": [
                     {"id": f.id, "metric": f.metric, "label": f.label, "unit": f.unit, "latest": latest_reading(f.id)}
                     for f in fields_by_device.get(d.id, [])
@@ -126,6 +118,8 @@ def overview(
             "last_frame_ms": cam.last_frame_ms,
             "latest_frame_id": latest[0] if latest else None,
             "frames_last_hour": frames_last_hour.get(cam.id, 0),
+            "avg_still_bytes": avg_size.get(cam.id),
+            "mask_enabled": bool(cam.mask_enabled),
             "expected_last_hour": round(expected) if expected else None,
             "watched": live.is_watched(cam.id),
             "devices": cam_devices,
@@ -243,39 +237,8 @@ def series(
     averaged into buckets so the chart never gets more than ~max_points per line."""
     until = until_ms or now_ms()
     bucket = choose_bucket_ms(max(1, until - since_ms), min(max(50, max_points), 5000))
-    statuses = list(GOOD_STATUSES) + ([REVIEW] if include_review else [])
-    b = (Reading.t_ms // bucket).label("b")
-    rows = db.execute(
-        select(Reading.device_id, b, func.avg(func.coalesce(Reading.final_value, Reading.value)))
-        .where(Reading.metric == metric, Reading.t_ms >= since_ms, Reading.t_ms <= until,
-               Reading.status.in_(statuses), func.coalesce(Reading.final_value, Reading.value).is_not(None))
-        .group_by(Reading.device_id, b)
-        .order_by(b)
-    ).all()
-    devices = {d.id: d for d in db.scalars(select(Device)).all()}
-    out: dict[str, dict] = {}
-    for device_id, bucket_no, avg in rows:
-        d = devices.get(device_id)
-        key = f"dev:{device_id}"
-        s = out.setdefault(key, {
-            "key": key, "kind": "camera", "device_id": device_id,
-            "label": d.name if d else f"device {device_id}", "is_own": bool(d and d.is_own),
-            "camera_id": d.camera_id if d else None, "points": [],
-        })
-        s["points"].append([int(bucket_no) * bucket, round(float(avg), 3)])
-
-    rb = (ReferenceReading.t_ms // bucket).label("b")
-    ref_rows = db.execute(
-        select(ReferenceReading.source, ReferenceReading.device_ref, rb, func.avg(ReferenceReading.value))
-        .where(ReferenceReading.metric == metric, ReferenceReading.t_ms >= since_ms, ReferenceReading.t_ms <= until)
-        .group_by(ReferenceReading.source, ReferenceReading.device_ref, rb)
-        .order_by(rb)
-    ).all()
-    for source, device_ref, bucket_no, avg in ref_rows:
-        key = f"ref:{source}:{device_ref}"
-        s = out.setdefault(key, {"key": key, "kind": "reference", "label": f"{device_ref} ({source})", "points": []})
-        s["points"].append([int(bucket_no) * bucket, round(float(avg), 3)])
-    return {"metric": metric, "since_ms": since_ms, "until_ms": until, "bucket_ms": bucket, "series": list(out.values())}
+    return {"metric": metric, "since_ms": since_ms, "until_ms": until, "bucket_ms": bucket,
+            "series": bucketed(db, metric, since_ms, until, bucket, include_review)}
 
 
 @router.get("/metrics")

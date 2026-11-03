@@ -95,6 +95,23 @@ class Uploader(threading.Thread):
         return "retry"  # 401 (token), 5xx, 429...: keep the file and try again later
 
 
+class CaptureState:
+    """Per camera, what the server wants stored: {"regions": [[x, y, w, h], ...] | None,
+    "full_every_s": 300}. No entry means full pictures."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._by_cam: dict[str, dict] = {}
+
+    def set(self, by_cam: dict) -> None:
+        with self._lock:
+            self._by_cam = dict(by_cam or {})
+
+    def get(self, cam: str) -> dict | None:
+        with self._lock:
+            return self._by_cam.get(cam)
+
+
 class LiveState:
     """Which of our cameras somebody is watching right now (from heartbeat responses)."""
 
@@ -119,9 +136,10 @@ class LiveState:
 
 class Heartbeat(threading.Thread):
     def __init__(self, cfg: AgentConfig, spool: Spool, statuses: Callable[[], list[dict]], live: LiveState,
-                 stop: threading.Event):
+                 stop: threading.Event, capture: CaptureState | None = None):
         super().__init__(name="heartbeat", daemon=True)
         self.cfg, self.spool, self.statuses, self.live, self.stop_event = cfg, spool, statuses, live, stop
+        self.capture = capture
         self.session = make_session(cfg)
         self.ok = False
 
@@ -146,6 +164,8 @@ class Heartbeat(threading.Thread):
             try:
                 resp = self.beat()
                 self.live.set(resp.get("live") or [])
+                if self.capture is not None:
+                    self.capture.set(resp.get("capture") or {})
                 if not self.ok:
                     log.info("connected to %s", self.cfg.server_url)
                 self.ok = True

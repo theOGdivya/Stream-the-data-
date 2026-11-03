@@ -14,7 +14,7 @@ from ..config import Settings
 from ..db import now_ms
 from ..deps import get_db, get_live, get_settings
 from ..live import LiveHub
-from ..models import Agent, Camera, Frame
+from ..models import Agent, Camera, Device, Frame
 from ..reference import RefRow, store_reference_rows
 from ..storage import frame_relpath, valid_camera_id, write_atomic
 
@@ -88,8 +88,36 @@ def heartbeat(
         cam.status = cs.model_dump(exclude={"id", "name", "still_interval_s"})
         cam.status_ms = now
         camera_ids.append(cs.id)
+    capture = capture_settings(db, camera_ids)
     db.commit()
-    return {"live": live.watched(camera_ids), "server_time_ms": now}
+    return {"live": live.watched(camera_ids), "server_time_ms": now, "capture": capture}
+
+
+MASK_MARGIN = 0.25  # share of the screen size kept around each monitor (bezel, labels, room for shifts)
+
+
+def capture_settings(db: Session, camera_ids: list[str]) -> dict:
+    """For cameras set to "store only the marked monitors": the rectangles the capture
+    computer keeps (everything else is blacked out). They follow detected shifts; if a
+    monitor is lost, full pictures are requested until it is found again."""
+    out: dict[str, dict] = {}
+    for cam in db.scalars(select(Camera).where(Camera.id.in_(camera_ids), Camera.mask_enabled.is_(True))).all():
+        devices = db.scalars(select(Device).where(Device.camera_id == cam.id, Device.active.is_(True))).all()
+        if not devices:
+            continue
+        full_every = cam.full_every_s or 300
+        if any(d.align_status == "lost" for d in devices):
+            out[cam.id] = {"regions": None, "full_every_s": full_every, "reason": "monitor not found: sending full pictures"}
+            continue
+        regions = []
+        for d in devices:
+            pts = d.align_corners or d.corners
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            m = max(30.0, MASK_MARGIN * max(max(xs) - min(xs), max(ys) - min(ys)))
+            x0, y0 = max(0, int(min(xs) - m)), max(0, int(min(ys) - m))
+            regions.append([x0, y0, int(max(xs) + m) - x0, int(max(ys) + m) - y0])
+        out[cam.id] = {"regions": regions, "full_every_s": full_every}
+    return out
 
 
 @router.post("/frames")
@@ -135,6 +163,7 @@ def upload_frame(
         height=m.get("height"),
         size_bytes=len(data),
         brightness=m.get("brightness"),
+        masked=bool(m.get("masked")),
         ocr_status="pending",
     )
     db.add(frame)

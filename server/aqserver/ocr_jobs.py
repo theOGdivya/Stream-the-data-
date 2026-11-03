@@ -1,12 +1,19 @@
-"""Glue between the database and the OCR pipeline."""
+"""Glue between the database and the OCR pipeline (alignment + reading)."""
 from __future__ import annotations
 
+from dataclasses import replace
+
+import cv2
+import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import Settings
-from .models import OK, Device, Field, Frame, Reading
-from .ocr.pipeline import DeviceSpec, FieldSpec, load_image, run_frame
+from .models import OK, REVIEW, Device, Field, Frame, Reading
+from .ocr.align import ALIGNER, AlignResult
+from .ocr.pipeline import DeviceSpec, FieldSpec, FieldResult, load_image, run_frame
+
+LOST_NOTE = "monitor not found where it was marked (camera moved or view blocked)"
 
 
 def field_spec(f: Field) -> FieldSpec:
@@ -18,7 +25,7 @@ def field_spec(f: Field) -> FieldSpec:
 
 def device_spec(d: Device, fields: list[Field]) -> DeviceSpec:
     return DeviceSpec(id=d.id, corners=[list(c) for c in d.corners], warp_w=d.warp_w, warp_h=d.warp_h,
-                      fields=[field_spec(f) for f in fields])
+                      fields=[field_spec(f) for f in fields], ref_frame_id=d.ref_frame_id)
 
 
 def device_specs(db: Session, camera_id: str) -> list[DeviceSpec]:
@@ -33,6 +40,57 @@ def device_specs(db: Session, camera_id: str) -> list[DeviceSpec]:
     return specs
 
 
+def _gray(img: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+
+def align_specs(db: Session, settings: Settings, frame: Frame, img: np.ndarray,
+                specs: list[DeviceSpec]) -> tuple[list[DeviceSpec], dict[int, AlignResult]]:
+    """Find each monitor again in this picture. Returns specs with corrected corners and
+    the alignment result per device."""
+    gray = _gray(img)
+    out: list[DeviceSpec] = []
+    results: dict[int, AlignResult] = {}
+    for spec in specs:
+        if spec.ref_frame_id is None or spec.ref_frame_id == frame.id:
+            results[spec.id] = AlignResult("ok", spec.corners)
+            out.append(spec)
+            continue
+
+        def load_ref(ref_id=spec.ref_frame_id):
+            ref = db.get(Frame, ref_id)
+            if ref is None:
+                return None
+            try:
+                return _gray(load_image(settings.data_dir / ref.path))
+            except (OSError, ValueError):
+                return None
+
+        key = (spec.id, spec.ref_frame_id, tuple(tuple(c) for c in spec.corners))
+        res = ALIGNER.align(key, load_ref, gray, spec.corners)
+        results[spec.id] = res
+        out.append(replace(spec, corners=res.corners) if res.status == "adjusted" else spec)
+    return out, results
+
+
+def read_frame(db: Session, settings: Settings, frame: Frame, img: np.ndarray, specs: list[DeviceSpec],
+               debug: bool = False) -> tuple[list[FieldResult], dict[int, AlignResult]]:
+    """Align, then read every field. Fields on a monitor that could not be found go to review."""
+    aligned, align = align_specs(db, settings, frame, img, specs)
+    results = run_frame(img, aligned, settings.review_confidence, debug=debug)
+    for r in results:
+        if align[r.device_id].status == "lost":
+            r.status, r.note = REVIEW, LOST_NOTE
+    return results, align
+
+
+def _bootstrap_reference(db: Session, frame: Frame) -> None:
+    """Monitors marked before shift detection existed get this picture as their reference."""
+    for d in db.scalars(select(Device).where(Device.camera_id == frame.camera_id, Device.active.is_(True),
+                                             Device.ref_frame_id.is_(None))).all():
+        d.ref_frame_id = frame.id
+
+
 def process_frame(db: Session, frame: Frame, settings: Settings, specs: list[DeviceSpec] | None = None) -> int:
     """Read every calibrated field in one stored frame. Returns how many readings were added.
     Fields that already have a reading for this frame (e.g. a human correction) are left alone."""
@@ -41,10 +99,25 @@ def process_frame(db: Session, frame: Frame, settings: Settings, specs: list[Dev
     if not specs:
         frame.ocr_status = "skipped"  # camera not calibrated yet; reprocess later
         return 0
+    if any(s.ref_frame_id is None for s in specs):
+        _bootstrap_reference(db, frame)
+        db.flush()
+        specs = device_specs(db, frame.camera_id)
     img = load_image(settings.data_dir / frame.path)
+    results, align = read_frame(db, settings, frame, img, specs)
+
+    frame.alignment = {str(dev_id): res.as_dict() for dev_id, res in align.items()}
+    for dev_id, res in align.items():
+        d = db.get(Device, dev_id)
+        if d is not None and (d.align_ms is None or frame.captured_ms >= d.align_ms):
+            d.align_status = res.status
+            d.align_shift_px = round(res.shift_px, 1)
+            d.align_corners = res.corners if res.status == "adjusted" else None
+            d.align_ms = frame.captured_ms
+
     existing = {fid for (fid,) in db.execute(select(Reading.field_id).where(Reading.frame_id == frame.id)).all()}
     added = 0
-    for r in run_frame(img, specs, settings.review_confidence):
+    for r in results:
         if r.field_id in existing:
             continue
         db.add(Reading(
@@ -56,3 +129,10 @@ def process_frame(db: Session, frame: Frame, settings: Settings, specs: list[Dev
     frame.ocr_status = "done"
     frame.ocr_error = None
     return added
+
+
+def frame_corners(frame: Frame, device: Device) -> list[list[float]]:
+    """Corners to cut a device's screen out of a stored frame: the shift-corrected ones
+    used when the frame was read, or the marked ones."""
+    info = (frame.alignment or {}).get(str(device.id)) or {}
+    return info.get("corners") or device.corners

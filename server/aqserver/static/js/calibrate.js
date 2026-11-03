@@ -60,7 +60,7 @@ async function showNewestFrame() {
     const img = await loadImg($('#frame-img'), `/api/frames/${f.id}/image.jpg`);
     state.frame = { id: f.id, w: img.naturalWidth, h: img.naturalHeight, captured_ms: f.captured_ms };
     $('#frame-svg').setAttribute('viewBox', `0 0 ${state.frame.w} ${state.frame.h}`);
-    $('#frame-info').textContent = `Picture taken ${fmtDateTime(f.captured_ms)}`;
+    $('#frame-info').textContent = `Picture taken ${fmtDateTime(f.captured_ms)}${f.masked ? ' (areas outside the monitors are blacked out)' : ''}`;
   } catch (e) {
     showFrameHint(`No picture from this camera yet (${e.message}).`);
   }
@@ -72,8 +72,39 @@ function showFrameHint(text) {
   h.classList.toggle('hidden', !text);
 }
 
+function renderCameraSettings() {
+  const c = cam();
+  $('#storage-box').classList.toggle('hidden', !c);
+  if (!c) return;
+  $('#mask-enabled').checked = c.mask_enabled;
+  $('#full-every').value = Math.round((c.full_every_s || 300) / 60);
+  $('#mask-note').textContent = c.mask_enabled
+    ? 'On: the capture computer blacks out everything except the marked monitors before saving each still.'
+    : 'Off: full pictures are stored.';
+}
+
+async function saveCameraSettings() {
+  const c = cam();
+  if (!c) return;
+  const enabling = $('#mask-enabled').checked && !c.mask_enabled;
+  if (enabling && !confirm('Only the marked monitors will be kept in stored pictures. Anything not marked (including monitors you have not marked yet) is blacked out and cannot be recovered. Continue?')) {
+    $('#mask-enabled').checked = false;
+    return;
+  }
+  const minutes = Math.max(1, Math.min(1440, Number($('#full-every').value) || 5));
+  try {
+    await api(`/api/cameras/${enc(c.id)}`, { method: 'PATCH', body: { mask_enabled: $('#mask-enabled').checked, full_every_s: minutes * 60 } });
+    toast('Saved. The capture computer picks this up within a few seconds.');
+    await loadCameras();
+    renderCameraSettings();
+  } catch (err) { toast(err.message, 'error'); }
+}
+$('#mask-enabled').addEventListener('change', saveCameraSettings);
+$('#full-every').addEventListener('change', saveCameraSettings);
+
 async function refreshAll(preferId) {
   await loadCameras(preferId);
+  renderCameraSettings();
   await showNewestFrame();
   renderDevices();
   renderFrameOverlay();
@@ -93,6 +124,7 @@ function renderDevices() {
       onclick: () => selectDevice(d.id),
     }, el('span', { style: 'flex:1' }, el('strong', {}, d.name), d.model ? el('span', { class: 'muted small' }, ` · ${d.model}`) : null),
     d.is_own ? el('span', { class: 'tag' }, 'Ours') : null,
+    alignTag(d),
     el('span', { class: 'muted small' }, `${d.fields.length} number${d.fields.length === 1 ? '' : 's'}`))));
   }
   const form = $('#device-form');
@@ -106,9 +138,53 @@ function renderDevices() {
     form.external_id.value = d.external_id || '';
     $('#device-save').textContent = 'Save details';
     $('#device-delete').classList.remove('hidden');
+    renderAlignment(d);
   } else if (!state.pending) {
     form.classList.add('hidden');
   }
+  if (!d || state.pending) $('#align-box').replaceChildren();
+}
+
+function alignTag(d) {
+  const a = d.alignment || {};
+  if (a.status === 'lost') return el('span', { class: 'pill bad' }, 'Not found');
+  if (a.status === 'adjusted') return el('span', { class: 'pill warn' }, `Shifted ${Math.round(a.shift_px)} px`);
+  return null;
+}
+
+// Camera-shift detection status for the selected monitor.
+function renderAlignment(d) {
+  const a = d.alignment || {};
+  const box = $('#align-box');
+  const when = a.checked_ms ? ` (picture from ${fmtDateTime(a.checked_ms)})` : '';
+  if (a.status === 'adjusted') {
+    box.replaceChildren(el('div', { class: 'alert', style: 'border-color:var(--warning);background:color-mix(in srgb, var(--warning) 10%, var(--surface))' },
+      el('span', { class: 'icon', 'aria-hidden': 'true' }, '!'),
+      el('div', {},
+        el('strong', {}, `Moved ${Math.round(a.shift_px)} px since it was marked`), when,
+        el('p', { class: 'small', style: 'margin:4px 0 8px' }, 'Readings are being corrected automatically (orange dashed outline = where it is now). If the camera or monitor was moved on purpose, accept the new position.'),
+        el('button', { type: 'button', class: 'primary', onclick: () => acceptAlignment(d) }, 'Accept new position'))));
+  } else if (a.status === 'lost') {
+    box.replaceChildren(el('div', { class: 'alert', role: 'alert' },
+      el('span', { class: 'icon', 'aria-hidden': 'true' }, '!'),
+      el('div', {}, el('strong', {}, 'Not found in the latest picture'), when,
+        el('p', { class: 'small', style: 'margin:4px 0 0' }, 'The camera may have moved a lot, or something is blocking the view. Fix the setup, or re-mark the corners on the newest picture.'),
+        el('button', { type: 'button', style: 'margin-top:8px', onclick: () => {
+          state.pending = { deviceId: d.id };
+          startCorners();
+        } }, 'Re-mark corners'))));
+  } else {
+    box.replaceChildren(el('p', { class: 'small muted', style: 'margin:0' },
+      a.status ? `Position check: in place${when}.` : 'Position check: waiting for the next picture.'));
+  }
+}
+
+async function acceptAlignment(d) {
+  try {
+    await api(`/api/devices/${d.id}/accept-alignment`, { method: 'POST' });
+    toast('New position accepted. It is now the reference for this monitor.');
+    await refreshAll();
+  } catch (err) { toast(err.message, 'error'); }
 }
 
 function selectDevice(id) {
@@ -211,12 +287,12 @@ $('#frame-svg').addEventListener('pointerdown', async e => {
   try {
     let id;
     if (state.pending?.create) {
-      const d = await api(`/api/cameras/${enc(state.camId)}/devices`, { method: 'POST', body: { ...state.pending.details, corners } });
+      const d = await api(`/api/cameras/${enc(state.camId)}/devices`, { method: 'POST', body: { ...state.pending.details, corners, ref_frame_id: state.frame.id } });
       id = d.id;
       toast('Monitor added. Now draw a box around each number on its screen below.');
     } else {
       id = state.pending.deviceId;
-      await api(`/api/devices/${id}`, { method: 'PATCH', body: { corners } });
+      await api(`/api/devices/${id}`, { method: 'PATCH', body: { corners, ref_frame_id: state.frame.id } });
       toast('Corners updated');
     }
     state.pending = null;
@@ -245,6 +321,10 @@ function renderFrameOverlay() {
     });
     poly.addEventListener('click', () => selectDevice(d.id));
     svg.append(poly);
+    if (d.alignment?.status === 'adjusted' && d.alignment.corners) {
+      svg.append(svgEl('polygon', { points: d.alignment.corners.map(p => p.join(',')).join(' '), fill: 'none', stroke: '#eb6834',
+        'stroke-width': 2, 'stroke-dasharray': '8 6', 'vector-effect': 'non-scaling-stroke', style: 'pointer-events:none' }));
+    }
     const [x, y] = d.corners[0];
     svg.append(svgEl('text', { x, y: y - fs * 0.4, 'font-size': fs, 'font-weight': 700, fill: '#fff',
       stroke: '#000', 'stroke-width': fs / 6, 'paint-order': 'stroke', style: 'pointer-events:none' }, d.name));
@@ -278,7 +358,7 @@ function addCornerHandles(svg, d, poly, r) {
         c.removeEventListener('pointermove', move);
         c.removeEventListener('pointerup', up);
         try {
-          await api(`/api/devices/${d.id}`, { method: 'PATCH', body: { corners } });
+          await api(`/api/devices/${d.id}`, { method: 'PATCH', body: { corners, ref_frame_id: state.frame.id } });
           toast('Corner moved. Re-read past pictures if this monitor already had numbers.');
           await refreshAll();
         } catch (err) { toast(err.message, 'error'); }

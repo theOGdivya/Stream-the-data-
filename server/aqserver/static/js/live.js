@@ -124,6 +124,19 @@ function readingNode(f, now) {
     review ? el('div', { class: 'flag' }, '⚠ needs review') : el('div', { class: 't' }, ago(r.t_ms, now)));
 }
 
+// Camera-shift detection: say so when a monitor has moved in the picture (always with text, not colour alone).
+function alignBadge(d, cam) {
+  const a = d.alignment || {};
+  if (a.status === 'lost') {
+    return el('a', { class: 'pill bad', href: `calibrate.html#${encodeURIComponent(cam.id)}`, title: 'Readings from this monitor go to review until it is found again' }, 'Not found in picture');
+  }
+  if (a.status === 'adjusted' && a.shift_px >= 8) {
+    return el('a', { class: 'pill warn', href: `calibrate.html#${encodeURIComponent(cam.id)}`, title: 'Readings are corrected automatically. Check the setup, then accept the new position on Calibrate.' },
+      `View shifted ${Math.round(a.shift_px)} px · auto-corrected`);
+  }
+  return null;
+}
+
 function updateCard(card, cam, ov) {
   card.title.textContent = cam.name || cam.id;
   card.status.className = `pill ${cam.online ? 'good' : 'bad'}`;
@@ -136,6 +149,8 @@ function updateCard(card, cam, ov) {
     st.fps ? `${st.fps} fps` : null,
     st.brightness !== undefined && st.brightness !== null ? `Brightness ${Math.round(st.brightness)}` : null,
     st.width ? `${st.width}×${st.height}` : null,
+    cam.avg_still_bytes ? `Avg still ${fmtBytes(cam.avg_still_bytes)}` : null,
+    cam.mask_enabled ? 'Storing marked monitors only' : null,
   ].filter(Boolean);
   card.meta.replaceChildren(...bits.map(b => el('span', {}, b)),
     ...(st.error ? [el('span', { class: 'flag' }, `⚠ ${st.error}`)] : []));
@@ -146,7 +161,7 @@ function updateCard(card, cam, ov) {
   }
   card.devices.replaceChildren(...cam.devices.map(d => el('div', { class: 'device' },
     el('div', { class: 'device-name' }, d.name, d.model ? el('span', { class: 'tag' }, d.model) : null,
-      d.is_own ? el('span', { class: 'tag' }, 'Your device') : null),
+      d.is_own ? el('span', { class: 'tag' }, 'Your device') : null, alignBadge(d, cam)),
     el('div', { class: 'readings' }, d.fields.map(f => readingNode(f, ov.server_time_ms))))));
 }
 

@@ -14,13 +14,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import Settings
-from .models import Agent, Alert, Camera, TestRun
+from .models import Agent, Alert, Camera, Device, TestRun
 from .storage import disk_usage
 
 log = logging.getLogger(__name__)
 
+OPEN_AFTER_MS = 60_000  # a problem must last this long before an alert opens (no blips, no start-up noise)
 RESOLVE_AFTER_MS = 120_000  # a condition must stay clear this long before its alert closes
 AGENT_DISK_LOW_BYTES = 2 * 1024**3
+SHIFT_ALERT_PX = 8.0  # smaller shifts are corrected silently (still recorded per picture)
 
 
 @dataclass
@@ -76,6 +78,24 @@ def evaluate(db: Session, settings: Settings, now: int) -> list[Condition]:
                 conds.append(Condition(f"no_frames:{cam.id}", "no_frames",
                                        f"No new stills from '{label}' for over {int(limit // 60_000)} min", cam.id))
 
+    # Camera-shift detection: one alert per camera for a shifted view (readings are being
+    # corrected automatically) and one per monitor that can't be found at all.
+    recent = now - 15 * 60_000
+    shifted: dict[str, float] = {}
+    cam_names = {c.id: c.name or c.id for c in db.scalars(select(Camera)).all()}
+    for d in db.scalars(select(Device).where(Device.active.is_(True), Device.align_ms >= recent)).all():
+        if d.align_status == "lost":
+            conds.append(Condition(f"view_lost:{d.id}", "view_lost",
+                                   f"Monitor '{d.name}' can't be found in camera '{cam_names.get(d.camera_id, d.camera_id)}' "
+                                   "(camera moved a lot or view blocked); its readings go to review", d.camera_id))
+        elif d.align_status == "adjusted" and (d.align_shift_px or 0) >= SHIFT_ALERT_PX:
+            shifted[d.camera_id] = max(shifted.get(d.camera_id, 0), d.align_shift_px or 0)
+    for cam_id, px in shifted.items():
+        conds.append(Condition(f"view_shifted:{cam_id}", "view_shifted",
+                               f"Camera '{cam_names.get(cam_id, cam_id)}' view has shifted (up to {px:.0f} px) since setup; "
+                               "readings are being corrected automatically. Check the setup, then 'Accept new position' "
+                               "on Calibrate", cam_id))
+
     usage = disk_usage(settings.data_dir)
     if usage["free"] / usage["total"] < settings.disk_low_fraction:
         conds.append(Condition("server_disk", "disk_low",
@@ -87,15 +107,20 @@ class AlertManager:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._clear_since: dict[str, int] = {}
+        self._seen_since: dict[str, int] = {}
 
     def sync(self, db: Session, now: int) -> list[str]:
         """Open/resolve alerts. Returns the notification texts that were sent."""
         conds = {c.key: c for c in evaluate(db, self.settings, now)}
         open_alerts = {a.key: a for a in db.scalars(select(Alert).where(Alert.resolved_ms.is_(None))).all()}
         messages = []
+        for key in list(self._seen_since):
+            if key not in conds:
+                del self._seen_since[key]
         for key, c in conds.items():
             self._clear_since.pop(key, None)
-            if key not in open_alerts:
+            first_seen = self._seen_since.setdefault(key, now)
+            if key not in open_alerts and now - first_seen >= OPEN_AFTER_MS:
                 db.add(Alert(key=key, kind=c.kind, camera_id=c.camera_id, message=c.message[:512], opened_ms=now))
                 messages.append(f"[AQ platform] ALERT: {c.message}")
         for key, a in open_alerts.items():

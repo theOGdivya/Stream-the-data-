@@ -181,7 +181,9 @@ def test_runs_and_alerts(client, agent_client, app, settings):
     heartbeat(agent_client, brightness=5.0)
     mgr = AlertManager(settings)
     with app.state.Session() as db:
-        sent = mgr.sync(db, int(time.time() * 1000))
+        now = int(time.time() * 1000)
+        assert mgr.sync(db, now) == []  # a problem has to last a minute before it alerts
+        sent = mgr.sync(db, now + 61_000)
         kinds = {a.kind for a in db.scalars(select(Alert)).all()}
     assert {"no_frames", "dark"} <= kinds and len(sent) >= 2
     ov = client.get("/api/overview").json()

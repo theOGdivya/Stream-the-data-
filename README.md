@@ -18,7 +18,8 @@ on each monitor, alerts, and charts.
  │                 • live view on demand    │           │                   ▲          numbers + alerts  │
  └─────────────────────────────────────────┘           │                   │                           │
  your own monitors ─► your cloud ─► CSV upload / push ─►│ reference data ───┘                           │
-                                                        │ Dashboard: Live · Calibrate · Review · Data   │
+                                                        │ Live · Lined up · Calibrate · Review ·        │
+                                                        │ Results · Data & exports                      │
                                                         └──────────────────────────────────────────────┘
 ```
 
@@ -33,6 +34,10 @@ on each monitor, alerts, and charts.
 | **Quality control** | Unclear readings, values outside a plausible range, and low-confidence reads go to a **review queue**. A person confirms, corrects, or rejects each one, and every decision is logged with their name. Re-reading past pictures never overwrites human decisions. |
 | **Comparison** | Import your own monitors' cloud data or a reference instrument (CSV upload or JSON push). It's drawn on the same charts as dashed lines. |
 | **Alerts** | Camera offline, image dark or frozen, stills not arriving, upload backlog, computer clock off by more than 5 s, disk low. Shown on the dashboard and optionally sent to Slack/Discord/Telegram. |
+| **Camera-shift detection** | Every picture, each monitor is found again by matching image features against the picture it was marked on. If the camera is knocked or a monitor slides, readings are corrected automatically (tested to under 1 px error for shifts up to 85 px and 3° rotation) and an alert says so; a monitor that can't be found sends its readings to review. **Accept new position** on Calibrate makes a deliberate move the new reference. |
+| **Lined up** | All marked monitors' screens, straightened and side by side from the same moment, with the values read from each. Live, or step/play back through a test run; download any moment as an image for a report. |
+| **Store only the marked monitors** | Optional per camera: the capture computer blacks out everything except the marked monitors *before* fingerprinting each still, keeping a full picture every few minutes. The kept areas follow detected shifts; full pictures are sent while a monitor is lost. |
+| **Results** | Per test run: each monitor against a chosen reference (slope, intercept, R², RMSE, NRMSE, MAE, bias, completeness, response delay), time series and scatter plots, OCR quality and an own-monitor accuracy check, a draft methods paragraph, CSV downloads and print-to-PDF. |
 | **Exports** | Per test run or any time range: readings CSV (machine value, final value, status, reviewer, picture hash), pictures manifest, and reference data. |
 
 ## Repository layout
@@ -63,6 +68,7 @@ To use a real webcam pointed at a real monitor:
 python demo.py --webcam 0
 ```
 
+Add `--bump` to have the fake camera get knocked after 2 minutes, to watch camera-shift detection correct it.
 Press Ctrl+C to stop. Delete `demo-data/` to start fresh. On Windows, use `py demo.py` if `python` isn't found.
 
 ### Manual setup (what demo.py does)
@@ -113,11 +119,12 @@ Set `TEST_DATABASE_URL=postgresql+psycopg://user:pw@host:5432/db` to run the ser
 
 ## Status and next steps
 
-Working now: capture, store-and-forward upload, live view, calibration UI, OCR, review queue with audit log,
-reference import, alerts, exports, Docker deployment.
+Working now: capture, store-and-forward upload, live view, calibration UI, OCR, camera-shift detection,
+lined-up view, marked-areas-only storage, review queue with audit log, reference import, alerts, results page,
+exports, Docker deployment. Databases from older versions are upgraded automatically on start (new optional
+columns are added).
 
 Not built yet:
-- An analysis notebook that turns the exports into white-paper tables and figures (R², slope/intercept, RMSE, bias, completeness).
 - Support for monitors that cycle between screens (PM2.5, then CO₂, ...).
 - A learned digit reader trained on your corrected readings, for unusual fonts.
 - Pulling your own monitors' data straight from your cloud's API (for now: CSV upload or JSON push).

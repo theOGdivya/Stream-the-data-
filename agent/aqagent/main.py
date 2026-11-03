@@ -22,7 +22,7 @@ import cv2
 from . import __version__
 from .camera import CameraWorker, open_source
 from .config import CameraConfig, load_config
-from .net import Heartbeat, LiveSender, LiveState, Uploader
+from .net import CaptureState, Heartbeat, LiveSender, LiveState, Uploader
 from .power import prevent_sleep
 from .spool import Spool
 
@@ -53,10 +53,11 @@ def cmd_run(args) -> int:
 
     spool = Spool(cfg.spool_dir, cfg.keep_sent_days)
     live = LiveState()
+    capture = CaptureState()
     sender = LiveSender(cfg, live, stop)
-    cameras = [CameraWorker(c, spool, live.is_live, sender.submit, stop) for c in cfg.cameras]
+    cameras = [CameraWorker(c, spool, live.is_live, sender.submit, stop, capture.get) for c in cfg.cameras]
     threads = [*cameras, sender, Uploader(cfg, spool, stop),
-               Heartbeat(cfg, spool, lambda: [c.status() for c in cameras], live, stop)]
+               Heartbeat(cfg, spool, lambda: [c.status() for c in cameras], live, stop, capture)]
     for t in threads:
         t.start()
     try:

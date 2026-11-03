@@ -116,8 +116,40 @@ def test_agent_uploads_and_streams_live(tmp_path, live_server):
             time.sleep(0.3)
         assert frames >= 2, "stills were not uploaded"
         assert app.state.live.get("cam-a", 5) is not None, "live frames were not streamed"
+        # A still may have been captured a moment ago; it should be uploaded almost at once.
+        deadline = time.time() + 5
+        while spool.backlog() and time.time() < deadline:
+            time.sleep(0.1)
         assert spool.backlog() == 0
     finally:
         stop.set()
         for t in threads:
             t.join(timeout=5)
+
+
+def test_marked_areas_only(tmp_path):
+    import json
+
+    import cv2
+    import numpy as np
+
+    from aqagent.camera import CameraWorker, apply_mask
+    from aqagent.config import CameraConfig
+
+    frame = np.full((100, 200, 3), 200, np.uint8)
+    out = apply_mask(frame, [[10, 20, 30, 40], [190, 90, 50, 50]])
+    assert out[30, 20].tolist() == [200, 200, 200] and out[0, 0].tolist() == [0, 0, 0]
+    assert out[95, 195].tolist() == [200, 200, 200]  # region clipped at the frame edge
+
+    spool = Spool(tmp_path, keep_sent_days=0)
+    settings = {"regions": [[0, 0, 50, 50]], "full_every_s": 300}
+    worker = CameraWorker(CameraConfig(id="c1", source="synthetic"), spool, lambda c: False, lambda *a: None,
+                          threading.Event(), capture=lambda cam: settings)
+    for i in range(3):
+        worker._save_still(frame, 1_000_000 + i * 10_000)
+    metas = [json.loads(p.read_text()) for p in spool.pending_items()]
+    assert [m["masked"] for m in metas] == [False, True, True]  # first full, then marked areas only
+    img = cv2.imread(str(spool.pending_items()[1].with_suffix(".jpg")))
+    assert img[80, 150].max() < 10 and img[20, 20].min() > 150
+    worker._save_still(frame, 1_000_000 + 400_000)  # full_every_s passed: a full picture again
+    assert json.loads(spool.pending_items()[-1].read_text())["masked"] is False

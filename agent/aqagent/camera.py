@@ -35,6 +35,8 @@ def open_source(cfg: CameraConfig):
     src = cfg.source
     if src == "synthetic":
         return SyntheticSource(), False
+    if src == "synthetic-bump":  # demo: the fake camera gets knocked after 2 minutes
+        return SyntheticSource(bump_after_s=120), False
     if isinstance(src, str) and src.strip().isdigit():
         src = int(src)
     cap = cv2.VideoCapture(src, BACKENDS.get(cfg.backend, cv2.CAP_ANY))
@@ -58,6 +60,18 @@ def open_source(cfg: CameraConfig):
     return cap, isinstance(src, str) and os.path.isfile(src)
 
 
+def apply_mask(frame: np.ndarray, regions: list[list[float]]) -> np.ndarray:
+    """Black out everything outside the given rectangles (x, y, w, h in frame pixels)."""
+    out = np.zeros_like(frame)
+    h, w = frame.shape[:2]
+    for x, y, rw, rh in regions:
+        x0, y0 = max(0, int(x)), max(0, int(y))
+        x1, y1 = min(w, int(x + rw)), min(h, int(y + rh))
+        if x1 > x0 and y1 > y0:
+            out[y0:y1, x0:x1] = frame[y0:y1, x0:x1]
+    return out
+
+
 def thumb(frame: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(cv2.resize(frame, (64, 36), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY).astype(np.float32)
 
@@ -70,6 +84,7 @@ class CameraWorker(threading.Thread):
         is_live: Callable[[str], bool],
         send_live: Callable[[str, bytes, int], None],
         stop: threading.Event,
+        capture: Callable[[str], dict | None] = lambda _cam: None,
     ):
         super().__init__(name=f"camera-{cfg.id}", daemon=True)
         self.cfg = cfg
@@ -81,6 +96,8 @@ class CameraWorker(threading.Thread):
         self._status = {"connected": False, "error": "starting"}
         self._prev_thumb: np.ndarray | None = None
         self._same_count = 0
+        self.capture = capture
+        self._last_full = 0.0
 
     # --- status reported in heartbeats -----------------------------------------------------
     def status(self) -> dict:
@@ -168,7 +185,16 @@ class CameraWorker(threading.Thread):
                 next_live = now + 1.0 / max(0.2, cfg.live_fps)
 
     def _save_still(self, frame: np.ndarray, captured_ms: int) -> None:
-        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self.cfg.jpeg_quality])
+        # "Store only the marked monitors": black out the rest before encoding and hashing,
+        # except for a full picture every few minutes (context, and to find moved monitors).
+        settings = self.capture(self.cfg.id) or {}
+        regions = settings.get("regions")
+        now = captured_ms / 1000
+        masked = bool(regions) and now - self._last_full < float(settings.get("full_every_s") or 300)
+        if not masked:
+            self._last_full = now
+        stored = apply_mask(frame, regions) if masked else frame
+        ok, buf = cv2.imencode(".jpg", stored, [cv2.IMWRITE_JPEG_QUALITY, self.cfg.jpeg_quality])
         if not ok:
             log.error("camera %s: JPEG encode failed", self.cfg.id)
             return
@@ -182,7 +208,7 @@ class CameraWorker(threading.Thread):
         self._prev_thumb = t
         h, w = frame.shape[:2]
         meta = {"camera_id": self.cfg.id, "captured_ms": captured_ms, "sha256": hashlib.sha256(data).hexdigest(),
-                "width": w, "height": h, "brightness": round(brightness, 1)}
+                "width": w, "height": h, "brightness": round(brightness, 1), "masked": masked}
         self.spool.put(self.cfg.id, captured_ms, data, meta)
         self._set(last_capture_ms=captured_ms, brightness=round(brightness, 1), frozen=self._same_count >= 5)
 
