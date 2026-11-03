@@ -7,6 +7,7 @@ const INTERVALS = [5, 10, 15, 30, 60];
 
 function sourceLabel(src) {
   if (src === 'synthetic' || src === 'synthetic-bump') return 'Fake camera (demo)';
+  if (src === 'browser') return 'Browser camera';
   if (typeof src === 'number' || /^\d+$/.test(String(src))) return `Webcam ${src}`;
   return String(src ?? '–');
 }
@@ -38,10 +39,14 @@ function makePanel(agent) {
       el('li', {}, 'Windows: Settings → Privacy & security → Camera → turn on "Let desktop apps access your camera".'),
       el('li', {}, 'Mac: allow Terminal when macOS asks, or System Settings → Privacy & Security → Camera → Terminal. Then restart the demo.'),
       el('li', {}, 'USB webcams: try another USB port; a hub may not carry several cameras.')));
+  const browser = !!agent.browser;
   const node = el('section', { class: 'panel' },
-    el('div', { class: 'panel-head' }, el('h2', {}, `Computer: ${agent.id}`), status, scanInfo, el('div', { class: 'spacer' }), scanBtn),
-    el('h3', {}, 'Add a camera'),
-    form, tips,
+    el('div', { class: 'panel-head' },
+      el('h2', {}, browser ? `Browser: ${agent.id.replace(/^browser-/, '')}` : `Computer: ${agent.id}`), status, scanInfo,
+      el('div', { class: 'spacer' }), browser ? null : scanBtn),
+    browser
+      ? el('p', { class: 'small muted' }, 'Records from a browser tab on that computer. Start and stop it in that tab (the recorder page).')
+      : [el('h3', {}, 'Add a camera'), form, tips],
     el('h3', { style: 'margin-top:16px' }, 'Recording on this computer'), recording, stopped);
   const p = { node, status, scanInfo, scanBtn, select, url, name, interval, previewImg, previewText, recording, stopped,
     tiles: new Map(), detectedSig: null, nameTouched: false, userChose: false, agent };
@@ -147,7 +152,9 @@ function renderRecording(p) {
       el('a', { class: 'btn', href: `calibrate.html#${encodeURIComponent(c.id)}` }, 'Mark monitors →'),
       c.managed
         ? el('button', { type: 'button', class: 'danger', onclick: () => stop(c) }, 'Stop')
-        : el('span', { class: 'tag', title: 'Set in the capture program’s config file on that computer' }, 'From config file'));
+        : c.source === 'browser'
+          ? el('span', { class: 'tag', title: 'Start and stop it in the recorder tab on that computer' }, 'Browser tab')
+          : el('span', { class: 'tag', title: 'Set in the capture program’s config file on that computer' }, 'From config file'));
   }
   const off = p.agent.cameras.filter(c => !c.enabled);
   p.stopped.replaceChildren(...(off.length ? [el('p', { class: 'muted', style: 'margin:12px 0 4px' }, 'Stopped:'),

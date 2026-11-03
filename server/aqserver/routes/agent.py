@@ -20,6 +20,9 @@ from ..reference import RefRow, store_reference_rows
 from ..storage import frame_relpath, valid_camera_id, write_atomic
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
+# The same endpoints for recording from a browser tab (Capture page). These sit behind the
+# normal dashboard login instead of the agent token.
+browser = APIRouter(prefix="/api/capture", tags=["browser capture"])
 
 MAX_FRAME_BYTES = 20 * 1024 * 1024
 
@@ -60,6 +63,7 @@ def _ensure_camera(db: Session, camera_id: str, agent_id: str | None = None) -> 
 
 
 @router.post("/heartbeat")
+@browser.post("/heartbeat")
 def heartbeat(
     hb: Heartbeat,
     db: Session = Depends(get_db),
@@ -128,6 +132,7 @@ def capture_settings(db: Session, camera_ids: list[str]) -> dict:
 
 
 @router.post("/frames")
+@browser.post("/frames")
 def upload_frame(
     meta: str = Form(...),
     image: UploadFile = File(...),
@@ -186,6 +191,7 @@ def upload_frame(
 
 
 @router.post("/live/{camera_id}")
+@browser.post("/live/{camera_id}")
 async def upload_live(camera_id: str, request: Request, live: LiveHub = Depends(get_live)):
     """Live preview frame (raw JPEG body). Not stored; only kept in memory for viewers."""
     if not valid_camera_id(camera_id):

@@ -15,13 +15,21 @@
         <a href="calibrate.html">Calibrate</a> so the numbers get read.</p>
     </section>
 
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Record from the computer you're using now</h2>
+        <div class="spacer"></div>
+        <a class="btn primary" href="capture.html">Open the recorder →</a>
+      </div>
+      <p class="small muted" style="margin:0">Nothing to install: open this page on the computer next to the monitors, pick its webcam and press Start.
+        For long unattended tests, the capture program (below) is the sturdier choice: it keeps running without a browser window.</p>
+    </section>
+
     <section class="panel hidden" id="no-agents">
-      <h2>No capture computer is connected yet</h2>
-      <p>The capture program runs on the computer the webcam is plugged into. On that computer:</p>
-      <ul>
-        <li>To try things out: double-click <strong>start-demo</strong> in the project folder (or run <code>python demo.py</code>).</li>
-        <li>For real tests: install the capture program as described in <code>agent/README.md</code>, pointing it at this server.</li>
-      </ul>
+      <h2>No capture program is connected yet</h2>
+      <p>The capture program runs on the computer the webcam is plugged into and keeps recording without a browser window.
+        Install it as described in <code>agent/README.md</code>, pointing it at this website. Or, on your own computer,
+        double-click <strong>start-demo</strong> in the project folder to try everything locally.</p>
       <p class="small muted">This page updates by itself as soon as a computer connects.</p>
     </section>
 

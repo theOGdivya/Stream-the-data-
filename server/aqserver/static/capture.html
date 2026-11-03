@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Record from this computer</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/capture.js"></script>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Record from this computer's camera</h1>
+        <span class="pill" id="state">Not recording</span>
+      </div>
+      <p class="small muted" style="margin:0">Nothing to install: this browser tab records the camera, keeps the pictures on this computer
+        until they are uploaded, and shows up on the dashboard like any other camera. Keep this tab open and on screen while recording.</p>
+      <div class="alert hidden" id="problem" role="alert" style="margin-top:12px"><span class="icon" aria-hidden="true">!</span><span id="problem-text"></span></div>
+    </section>
+
+    <section class="panel">
+      <form class="picker" id="form">
+        <div style="display:grid;gap:10px;align-content:start">
+          <label class="field">This computer's name (shown on the dashboard)
+            <input name="computer" maxlength="40" required placeholder="e.g. Lab laptop"></label>
+          <label class="field">Camera <select name="device" aria-label="Camera"><option>Asking for camera access…</option></select></label>
+          <label class="field">Name of this camera
+            <input name="name" maxlength="60" required placeholder="e.g. Bench 1"></label>
+          <label class="field">Save a picture
+            <select name="interval">
+              <option value="5">every 5 s</option>
+              <option value="10" selected>every 10 s</option>
+              <option value="15">every 15 s</option>
+              <option value="30">every 30 s</option>
+              <option value="60">every 60 s</option>
+            </select>
+          </label>
+          <div class="row">
+            <button type="submit" class="primary" id="start">Start recording</button>
+            <button type="button" class="danger hidden" id="stop">Stop recording</button>
+          </div>
+          <p class="small muted" id="resolution" style="margin:0"></p>
+        </div>
+        <div>
+          <div class="viewport" style="cursor:default"><video id="video" autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;display:block"></video></div>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Status</h2></div>
+      <div class="strip" id="stats"></div>
+      <ul class="small muted" style="margin-bottom:0">
+        <li>Plug the computer in, and set it never to sleep. This page also asks the screen to stay on.</li>
+        <li>Keep this tab visible. Browsers slow down hidden tabs, which can delay pictures.</li>
+        <li>Pictures wait on this computer if the internet drops, and upload when it is back. Don't clear the browser's data while recording.</li>
+        <li>After a restart, open this page again and press <strong>Start recording</strong>. Your choices are remembered.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
