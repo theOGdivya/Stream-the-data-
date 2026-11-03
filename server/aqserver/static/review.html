@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review readings</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/review.js"></script>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Review readings</h1>
+        <span class="pill" id="total">…</span>
+        <div class="spacer"></div>
+        <label class="row small">Camera <select id="f-camera"><option value="">All</option></select></label>
+        <label class="row small">Metric <select id="f-metric"><option value="">All</option></select></label>
+        <label class="row small">Order
+          <select id="f-order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select>
+        </label>
+      </div>
+      <p class="muted small" style="margin:0">These readings were unclear, outside the plausible range, or flagged by someone.
+        Check the picture, then confirm the reading, type the right value (Enter saves), or mark it unreadable. Every decision is logged with your name.</p>
+      <p class="small" id="stats" style="margin:8px 0 0"></p>
+    </section>
+    <section class="review-list" id="list"></section>
+    <p class="muted small hidden" id="more"></p>
+  </main>
+
+  <dialog id="frame-dialog">
+    <div class="dialog-head"><h2 id="frame-title">Picture</h2><button type="button" id="frame-close">Close</button></div>
+    <div class="dialog-body"><img id="frame-img" alt="Full camera picture"></div>
+  </dialog>
+</body>
+</html>

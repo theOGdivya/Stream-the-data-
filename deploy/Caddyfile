@@ -1,0 +1,22 @@
+# HTTPS reverse proxy. Caddy gets and renews the certificate for $DOMAIN automatically
+# (the domain's DNS A record must point at this server, and ports 80/443 must be open).
+{$DOMAIN} {
+	request_body {
+		max_size 25MB
+	}
+	encode {
+		gzip
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+	reverse_proxy api:8000
+}
