@@ -1,0 +1,14 @@
+{
+  "name": "AQ Test Platform",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "hostRequirements": { "cpus": 2 },
+  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr fonts-dejavu-core && python demo.py --setup-only",
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": { "label": "AQ Test Platform", "onAutoForward": "notify" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": [".devcontainer/README.md"] }
+  }
+}

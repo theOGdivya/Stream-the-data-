@@ -20,6 +20,7 @@ import argparse
 import base64
 import json
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -36,6 +37,34 @@ VENV = DEMO / ".venv"
 TOKEN = "demo-agent-token-not-a-secret"
 USER, PASSWORD = "demo", "demo"
 CAMERA_ID = "demo-cam"
+
+
+def secure_logins() -> list[tuple[str, str]]:
+    """Logins for a demo reachable from the internet (e.g. a GitHub Codespace): kept in
+    demo-data/login.txt, one "name:password" per line. A random admin login is created the
+    first time; add a line per team member and restart to give them access."""
+    f = DEMO / "login.txt"
+    logins = []
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            name, sep, pw = line.strip().partition(":")
+            if sep and name and pw:
+                logins.append((name, pw))
+    if not logins:
+        DEMO.mkdir(exist_ok=True)
+        logins = [("admin", secrets.token_urlsafe(12))]
+        f.write_text("".join(f"{n}:{pw}\n" for n, pw in logins), encoding="utf-8")
+        try:
+            f.chmod(0o600)
+        except OSError:
+            pass
+    return logins
+
+
+def public_url(port: int) -> str | None:
+    """The https address of this port when running in a GitHub Codespace."""
+    name, domain = os.environ.get("CODESPACE_NAME"), os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    return f"https://{name}-{port}.{domain}" if name and domain else None
 
 
 def venv_python() -> Path:
@@ -145,6 +174,9 @@ def main() -> int:
                     help="fake camera gets knocked after 2 minutes, to watch shift detection correct it")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-browser", action="store_true", help="don't open the browser")
+    ap.add_argument("--secure", action="store_true",
+                    help="random password kept in demo-data/login.txt instead of demo/demo (for a public link)")
+    ap.add_argument("--setup-only", action="store_true", help="install everything, then exit")
     args = ap.parse_args()
 
     # Ctrl+C or a terminate request both stop everything cleanly (and the children with us).
@@ -155,11 +187,20 @@ def main() -> int:
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _stop)
 
+    global USER, PASSWORD
+    users = f"{USER}:{PASSWORD}"
+    if args.secure:
+        logins = secure_logins()
+        USER, PASSWORD = logins[0]
+        users = ",".join(f"{n}:{pw}" for n, pw in logins)
     py = ensure_environment()
+    if args.setup_only:
+        print("Everything is installed.")
+        return 0
     source = "synthetic-bump" if args.bump else args.webcam  # None: choose on the Cameras page
     agent_cfg = write_agent_config(source, args.port)
     server_env = {**os.environ, "DATA_DIR": str(DEMO / "server"), "AGENT_TOKEN": TOKEN,
-                  "DASHBOARD_USERS": f"{USER}:{PASSWORD}"}
+                  "DASHBOARD_USERS": users}
     procs: list[tuple[str, subprocess.Popen]] = []
 
     def start(name: str, cmd: list[str], cwd: Path, env: dict) -> None:
@@ -179,7 +220,7 @@ def main() -> int:
             if str(source).startswith("synthetic"):
                 preset_fake_lcd(py, args.port)
 
-        url = f"http://localhost:{args.port}" + ("/cameras.html" if source is None else "")
+        url = (public_url(args.port) or f"http://localhost:{args.port}") + ("/cameras.html" if source is None else "")
         print(f"""
   Dashboard: {url}
   Login:     {USER} / {PASSWORD}
