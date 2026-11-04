@@ -40,7 +40,7 @@ async function load(append = false) {
 }
 
 function card(item) {
-  const input = el('input', { type: 'number', step: 'any', inputmode: 'decimal', value: item.value ?? '', 'aria-label': 'Correct value' });
+  const input = el('input', { type: 'number', step: 'any', inputmode: 'decimal', value: item.value ?? '', placeholder: 'Right value', 'aria-label': 'Correct value' });
   const node = el('article', { class: 'review-card' });
   const act = async (action, value) => {
     try {
@@ -70,10 +70,10 @@ function card(item) {
       item.note ? el('div', { class: 'flag' }, item.note) : null),
     el('div', { class: 'actions' },
       el('button', { type: 'button', class: 'primary', disabled: item.value === null, onclick: () => act('accept') }, 'Reading is right'),
-      input,
-      el('button', { type: 'button', onclick: save }, 'Save value'),
       el('button', { type: 'button', class: 'danger', onclick: () => act('reject') }, 'Unreadable'),
-      el('button', { type: 'button', onclick: () => openFrame(item) }, 'Full picture')),
+      el('button', { type: 'button', class: 'link', onclick: () => openFrame(item) }, 'Full picture')),
+    el('div', { class: 'actions fix' }, el('span', { class: 'small muted' }, 'Wrong?'), input,
+      el('button', { type: 'button', onclick: save }, 'Save the right value')),
   );
   return node;
 }
@@ -119,7 +119,7 @@ function renderSpotProgress(res) {
 }
 
 function spotCard(item) {
-  const input = el('input', { type: 'number', step: 'any', inputmode: 'decimal', 'aria-label': 'Value shown in the picture' });
+  const input = el('input', { type: 'number', step: 'any', inputmode: 'decimal', placeholder: 'Right value', 'aria-label': 'If it is wrong: the value shown in the picture' });
   const node = el('article', { class: 'review-card' });
   const act = async (action, value) => {
     try {
@@ -148,10 +148,10 @@ function spotCard(item) {
     el('div', { class: 'ocr' }, 'Machine read: ', el('strong', { class: 'num' }, item.raw_text), item.unit ? ` ${item.unit}` : ''),
     el('div', { class: 'actions' },
       el('button', { type: 'button', class: 'primary', onclick: () => act('right') }, 'Matches the picture'),
-      input,
-      el('button', { type: 'button', onclick: wrong }, 'Wrong: save this value'),
       el('button', { type: 'button', onclick: () => act('unclear') }, 'Can’t tell'),
-      el('button', { type: 'button', onclick: () => openFrame(item) }, 'Full picture')),
+      el('button', { type: 'button', class: 'link', onclick: () => openFrame(item) }, 'Full picture')),
+    el('div', { class: 'actions fix' }, el('span', { class: 'small muted' }, 'Wrong?'), input,
+      el('button', { type: 'button', onclick: wrong }, 'Save the right value')),
   );
   return node;
 }

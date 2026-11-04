@@ -134,18 +134,32 @@ $('#next').addEventListener('click', () => step(1));
 
 // --- audit ----------------------------------------------------------------------------------
 const ACTIONS = {
-  'reading.review': 'Reviewed a reading', 'reading.flag': 'Flagged a reading', 'run.start': 'Started a run', 'run.stop': 'Stopped a run',
-  'run.edit': 'Edited a run', 'device.create': 'Added a monitor', 'device.edit': 'Changed a monitor', 'device.remove': 'Removed a monitor',
+  'reading.review': 'Reviewed a reading', 'reading.flag': 'Flagged a reading', 'reading.spotcheck': 'Spot-checked a reading',
+  'run.start': 'Started a run', 'run.stop': 'Stopped a run', 'run.edit': 'Edited a run',
+  'device.create': 'Added a monitor', 'device.edit': 'Changed a monitor', 'device.remove': 'Removed a monitor',
+  'device.accept_alignment': 'Accepted a new monitor position',
   'field.create': 'Added a number box', 'field.edit': 'Changed a number box', 'field.remove': 'Removed a number box',
+  'camera.add': 'Added a camera', 'camera.edit': 'Changed camera settings', 'camera.start': 'Started a camera', 'camera.stop': 'Stopped a camera',
   'camera.reprocess': 'Re-read past pictures', 'reference.import': 'Imported reference data', 'reference.delete': 'Deleted reference data',
+  'event.add': 'Marked an event', 'event.edit': 'Changed an event', 'event.delete': 'Removed an event',
+  'strip.order': 'Reordered the lined-up view',
 };
 function summary(a) {
   const d = a.detail || {};
   if (a.action === 'reading.review') return `${d.action}: machine read "${d.ocr_text}", value now ${d.after?.final_value ?? '–'} (${d.after?.status})`;
+  if (a.action === 'reading.spotcheck') return `machine read "${d.ocr_text}": ${d.action === 'right' ? 'matches the picture' : d.action === 'wrong' ? `wrong, really ${d.after?.final_value}` : 'could not tell'}`;
   if (a.action.startsWith('run.')) return d.name || `run #${d.run_id}`;
   if (a.action === 'camera.reprocess') return `${d.camera_id}: ${d.frames} pictures`;
+  if (a.action === 'camera.add') return `${d.name || d.camera_id} on ${d.agent_id}`;
+  if (a.action.startsWith('camera.')) return d.camera_id || '';
   if (a.action === 'reference.import') return `${d.filename}: ${d.added} new of ${d.rows}`;
+  if (a.action === 'reference.delete') return `${d.source}${d.device ? ` / ${d.device}` : ''}: ${d.rows} values`;
   if (a.action.startsWith('device.')) return d.name || `monitor #${d.device_id}`;
+  if (a.action.startsWith('field.')) return d.field ? `${metricLabel(d.field.metric, catalog)}` : `number box #${d.field_id}`;
+  if (a.action.startsWith('event.')) {
+    const e = d.after || d.before || d;
+    return `${e.label || ''}${e.t_ms ? ` · ${fmtDateTime(e.t_ms)}` : ''}`;
+  }
   return '';
 }
 async function loadAudit() {

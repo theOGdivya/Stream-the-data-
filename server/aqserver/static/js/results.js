@@ -12,6 +12,7 @@ const form = $('#controls');
 
 const num = (v, d = 2) => (v === null || v === undefined ? '–' : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 }));
 const pct = v => (v === null || v === undefined ? '–' : `${num(v, 1)}%`);
+const fixed3 = v => (v === null || v === undefined ? '–' : Number(v).toFixed(3)); // slope and R²: 1.000, not 1
 
 function localInput(ms) {
   return new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -104,8 +105,8 @@ function render(res) {
       el('td', {}, el('span', { class: 'swatch-dot', style: `background:${colorFor(r.key)}` }), ' ', r.label,
         r.model ? el('div', { class: 'small muted' }, r.model) : null),
       el('td', { class: 'numcell' }, r.n ?? '–'), el('td', { class: 'numcell' }, pct(r.completeness_pct)),
-      el('td', { class: 'numcell' }, num(r.mean)), el('td', { class: 'numcell' }, num(r.slope)),
-      el('td', { class: 'numcell' }, num(r.intercept)), el('td', { class: 'numcell' }, num(r.r2, 3)),
+      el('td', { class: 'numcell' }, num(r.mean)), el('td', { class: 'numcell' }, fixed3(r.slope)),
+      el('td', { class: 'numcell' }, num(r.intercept)), el('td', { class: 'numcell' }, fixed3(r.r2)),
       el('td', { class: 'numcell' }, num(r.rmse)), el('td', { class: 'numcell' }, pct(r.nrmse_pct)),
       el('td', { class: 'numcell' }, num(r.mae)),
       el('td', { class: 'numcell' }, r.bias === null || r.bias === undefined ? '–' : `${r.bias > 0 ? '+' : ''}${num(r.bias)} (${r.bias_pct > 0 ? '+' : ''}${pct(r.bias_pct)})`),
@@ -124,7 +125,7 @@ function render(res) {
   chart.render({ bucket_ms: res.avg_s * 1000, series: res.series }, state.order, unit, res.metric);
 
   // scatter plots
-  $('#scatter').replaceChildren(...(rows.length ? rows.filter(r => res.scatter[r.key]?.length).map(r => scatterCard(r, res)) :
+  $('#scatter').replaceChildren(...(rows.some(r => res.scatter[r.key]?.length >= 3) ? rows.filter(r => res.scatter[r.key]?.length >= 3).map(r => scatterCard(r, res)) :
     [el('p', { class: 'muted' }, 'No paired data.')]));
 
   renderHumidity(res);
@@ -203,7 +204,7 @@ function scatterCard(r, res) {
   add('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--ink-2)' }, `Reference${res.unit ? ` (${res.unit})` : ''}`);
   add('text', { x: 12, y: (m.t + H - m.b) / 2, 'text-anchor': 'middle', 'font-size': 12, fill: 'var(--ink-2)', transform: `rotate(-90 12 ${(m.t + H - m.b) / 2})` }, r.label);
   const eq = r.slope === null || r.slope === undefined ? `n = ${r.n}` :
-    `y = ${num(r.slope, 3)}x ${r.intercept >= 0 ? '+' : '−'} ${num(Math.abs(r.intercept))} · R² ${num(r.r2, 3)} · n ${r.n}`;
+    `y = ${fixed3(r.slope)}x ${r.intercept >= 0 ? '+' : '−'} ${num(Math.abs(r.intercept))} · R² ${fixed3(r.r2)} · n ${r.n}`;
   return el('figure', { class: 'scatter', style: 'margin:0' }, el('h3', {}, r.label), el('div', { class: 'eq' }, eq), svg);
 }
 

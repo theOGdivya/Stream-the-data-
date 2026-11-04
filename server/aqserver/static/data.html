@@ -9,8 +9,12 @@
 </head>
 <body>
   <main>
+    <header class="page-head">
+      <h1>Data &amp; exports</h1>
+      <p class="page-intro">Start and stop test runs, download everything as CSV, import reference data, look up any stored picture, and see who changed what.</p>
+    </header>
     <section class="panel" aria-labelledby="runs-title">
-      <div class="panel-head"><h1 id="runs-title">Test runs</h1></div>
+      <div class="panel-head"><h2 id="runs-title">Test runs</h2></div>
       <form id="run-form" class="form-grid" style="margin-bottom:16px">
         <label class="field">Name <input name="run_name" required maxlength="255" placeholder="e.g. Office, 7 days, Nov 2026"></label>
         <label class="field" style="grid-column: span 2">Notes (setup, room, window, anything unusual) <input name="notes"></label>
@@ -23,7 +27,7 @@
 
     <section class="panel" aria-labelledby="range-title">
       <div class="panel-head"><h2 id="range-title">Export any time range</h2></div>
-      <form id="range-form" class="form-grid">
+      <form id="range-form" class="form-grid wide">
         <label class="field">From <input type="datetime-local" name="from" required></label>
         <label class="field">To <input type="datetime-local" name="to" required></label>
         <div class="row" id="range-links" style="grid-column: 1 / -1"></div>
@@ -35,10 +39,10 @@
       <p class="muted small" style="margin-top:0">Upload a CSV with a time column and either <code>device, metric, value</code> columns or one column per metric
         (<code>pm25</code>, <code>pm10</code>, <code>co2</code>, <code>temp</code>, <code>rh</code>, …). It is drawn as dashed lines on the Live charts and included in exports.</p>
       <form id="ref-form" class="form-grid">
-        <label class="field">CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
+        <label class="field" style="grid-column: span 2">CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
         <label class="field">Source name <input name="source" value="own-cloud" maxlength="64" required></label>
-        <label class="field">Device (if the file has no device column) <input name="device" maxlength="255"></label>
-        <label class="field">Time zone of the timestamps <input name="tz" value="UTC" placeholder="UTC or +05:30"></label>
+        <label class="field" title="Only needed if the file has no device column">Device name (optional) <input name="device" maxlength="255" placeholder="if the file has none"></label>
+        <label class="field">Time zone of the times <input name="tz" value="UTC" placeholder="UTC or +05:30"></label>
         <button type="submit" class="primary">Import</button>
       </form>
       <div class="table-wrap" style="margin-top:16px"><table id="sources"></table></div>
@@ -51,11 +55,11 @@
 
     <section class="panel" aria-labelledby="browse-title">
       <div class="panel-head"><h2 id="browse-title">Picture browser</h2></div>
-      <form id="browse-form" class="form-grid">
+      <form id="browse-form" class="form-grid wide">
         <label class="field">Camera <select name="camera"></select></label>
         <label class="field">Time <input type="datetime-local" name="at" step="1" required></label>
-        <div class="row"><button type="submit" class="primary">Show nearest picture</button>
-          <button type="button" id="prev">◀ Earlier</button><button type="button" id="next">Later ▶</button></div>
+        <div class="row" style="grid-column: 1 / -1"><button type="submit" class="primary">Show nearest picture</button>
+          <button type="button" id="prev">← Earlier</button><button type="button" id="next">Later →</button></div>
       </form>
       <div id="browse" style="margin-top:12px"></div>
     </section>

@@ -1,4 +1,4 @@
-import { $, $$, api, el, fmtDateTime, fmtValue, renderTopbar, toast } from './common.js';
+import { $, $$, api, duration, el, fmtDateTime, fmtValue, renderTopbar, toast } from './common.js';
 
 renderTopbar('lined.html');
 
@@ -72,8 +72,14 @@ async function render(data) {
     }
   });
   await Promise.all(loads);
-  const spread = data.spread_ms > 1500 ? ` (cameras up to ${Math.round(data.spread_ms / 1000)} s apart)` : '';
+  // Pictures from different cameras are a few seconds apart at most when all are recording; a large
+  // gap means one camera has stopped, so its tile shows an older moment.
+  const far = data.spread_ms > 120_000;
+  const spread = data.spread_ms > 1500
+    ? ` · cameras ${data.spread_ms < 60_000 ? `${Math.round(data.spread_ms / 1000)} s` : duration(data.spread_ms)} apart${far ? ' (a camera is behind: check the times under each screen)' : ''}`
+    : '';
   $('#when').textContent = data.t_ms ? `${state.mode === 'live' ? 'Newest: ' : ''}${fmtDateTime(data.t_ms)}${spread}` : '';
+  $('#when').classList.toggle('flag', far);
   $('#download').href = `/api/strip.png${data.t_ms ? `?t_ms=${data.t_ms}` : ''}`;
 }
 
