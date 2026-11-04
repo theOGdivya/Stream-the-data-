@@ -18,12 +18,19 @@ export class MetricChart {
     root.append(this.legend, this.wrap, this.empty, this.table);
     this.plot = null;
     this.tableMode = false;
+    this.events = [];
     new ResizeObserver(() => this.plot && this.plot.setSize({ width: this.width(), height: this.height })).observe(root);
     window.addEventListener('themechange', () => this.last && this.render(...this.last));
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.last && this.render(...this.last));
   }
 
   width() { return Math.max(280, this.root.clientWidth); }
+
+  // Events (Incense lit, Window opened...) drawn as dashed lines, or bands when they lasted.
+  setEvents(events) {
+    this.events = events || [];
+    if (this.last) this.render(...this.last);
+  }
 
   setTableMode(on) {
     this.tableMode = on;
@@ -48,6 +55,9 @@ export class MetricChart {
       return { ...s, color, dashed: s.kind === 'reference' };
     });
 
+    if (this.events.length) {
+      this.legend.append(el('span', { class: 'key' }, el('span', { class: 'swatch dashed', style: `border-color:${cssVar('--ink-2')}` }), 'Event'));
+    }
     for (const s of styled) {
       this.legend.append(el('span', { class: 'key' },
         el('span', { class: `swatch${s.dashed ? ' dashed' : ''}`, style: `border-color:${s.color}` }),
@@ -99,7 +109,10 @@ export class MetricChart {
         spanGaps: false,
         points: { size: 8, width: 2, fill: s.color, stroke: surface },
       }))],
-      hooks: { setCursor: [u => this.updateTooltip(u, styled, xs, maps, unit, metric)] },
+      hooks: {
+        setCursor: [u => this.updateTooltip(u, styled, xs, maps, unit, metric)],
+        draw: [u => drawEvents(u, this.events)],
+      },
     };
     this.plot = new uPlot(opts, data, this.wrap);
     this.plot.over.addEventListener('mouseleave', () => this.tooltip.classList.add('hidden'));
@@ -110,8 +123,11 @@ export class MetricChart {
     if (idx === null || idx === undefined) { this.tooltip.classList.add('hidden'); return; }
     const x = xs[idx];
     const rows = styled.map((s, i) => [s, nearestValue(maps[i], xs, idx, Math.max(this.last[0].bucket_ms * 1.5, 60000))]);
+    const near = Math.max(this.last[0].bucket_ms, (u.scales.x.max - u.scales.x.min) * 1000 / 120);
+    const evs = this.events.filter(e => (e.end_ms ? x >= e.t_ms - near && x <= e.end_ms + near : Math.abs(e.t_ms - x) <= near));
     this.tooltip.replaceChildren(
       el('div', { class: 'tt-time' }, fmtDateTime(x)),
+      ...evs.map(e => el('div', { class: 'tt-event' }, `▍ ${e.label}`)),
       ...rows.map(([s, v]) => el('div', { class: 'tt-row' },
         el('span', { class: `swatch${s.dashed ? ' dashed' : ''}`, style: `border-color:${s.color}` }),
         el('b', {}, v === null ? '–' : fmtValue(v, metric)), s.label)),
@@ -134,6 +150,57 @@ export class MetricChart {
     this.table.replaceChildren(table);
     if (xs.length > 500) this.table.append(el('p', { class: 'muted small' }, `Showing the newest 500 of ${xs.length} rows. Use Data & exports for the full CSV.`));
   }
+}
+
+// Draw event markers on the plot canvas: a dashed line at the start, a light band while it
+// lasted, and the label at the top (moved down a row when labels would overlap).
+function drawEvents(u, events) {
+  if (!events.length) return;
+  const { ctx } = u;
+  const { left, top, width, height } = u.bbox;
+  const dpr = devicePixelRatio || 1;
+  const ink = cssVar('--ink-2');
+  const rowEnds = [];
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, width, height);
+  ctx.clip();
+  ctx.font = `${11 * dpr}px system-ui, sans-serif`;
+  ctx.textAlign = 'left'; // uPlot leaves this set by the axis labels
+  for (const e of events) {
+    const x = u.valToPos(e.t_ms / 1000, 'x', true);
+    const x2 = e.end_ms ? u.valToPos(e.end_ms / 1000, 'x', true) : null;
+    if ((x2 ?? x) < left || x > left + width) continue;
+    if (x2 !== null) {
+      ctx.fillStyle = ink;
+      ctx.globalAlpha = 0.08;
+      ctx.fillRect(Math.max(left, x), top, Math.min(left + width, x2) - Math.max(left, x), height);
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = dpr;
+    ctx.setLineDash([4 * dpr, 3 * dpr]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, top);
+    ctx.lineTo(Math.round(x) + 0.5, top + height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const label = e.label.length > 28 ? `${e.label.slice(0, 27)}…` : e.label;
+    const w = ctx.measureText(label).width + 8 * dpr;
+    let row = rowEnds.findIndex(end => end < x);
+    if (row < 0) row = rowEnds.length;
+    if (row > 3) continue; // too crowded; the tooltip still names it
+    rowEnds[row] = x + w;
+    const y = top + (4 + row * 15) * dpr;
+    ctx.fillStyle = cssVar('--surface');
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(x + 2 * dpr, y, w - 2 * dpr, 13 * dpr);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = ink;
+    ctx.textBaseline = 'top';
+    ctx.fillText(label, x + 5 * dpr, y + 1 * dpr);
+  }
+  ctx.restore();
 }
 
 function medianSpacing(pts) {

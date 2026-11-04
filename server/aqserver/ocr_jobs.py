@@ -12,6 +12,7 @@ from .config import Settings
 from .models import OK, REVIEW, Device, Field, Frame, Reading
 from .ocr.align import ALIGNER, AlignResult
 from .ocr.pipeline import DeviceSpec, FieldSpec, FieldResult, load_image, run_frame
+from .plausibility import check_around
 
 LOST_NOTE = "monitor not found where it was marked (camera moved or view blocked)"
 
@@ -142,6 +143,10 @@ def process_frame(db: Session, frame: Frame, settings: Settings, specs: list[Dev
             final_value=r.value if r.status == OK else None, note=(r.note or None) and r.note[:255],
         ))
         added += 1
+    # A number that jumps away and straight back is almost certainly a misread: send it to review.
+    for r in results:
+        if r.field_id not in existing:
+            check_around(db, r.field_id, r.metric, frame.captured_ms)
     frame.ocr_status = "done"
     frame.ocr_error = None
     return added

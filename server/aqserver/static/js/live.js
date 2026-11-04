@@ -1,5 +1,5 @@
 import {
-  $, ago, api, duration, el, fmtBytes, fmtValue, getCatalog, ImagePoller, metricLabel, renderTopbar, toast,
+  $, ago, api, duration, el, fmtBytes, fmtDateTime, fmtTime, fmtValue, getCatalog, ImagePoller, metricLabel, renderTopbar, toast,
   updateReviewCount,
 } from './common.js';
 import { MetricChart } from './chart.js';
@@ -219,7 +219,7 @@ async function loadMetrics() {
 function renderRanges() {
   $('#range-seg').replaceChildren(...RANGES.filter(([k]) => k !== 'run' || state.ov?.run).map(([k]) => el('button', {
     type: 'button', 'aria-pressed': String(k === state.range),
-    onclick: () => { state.range = k; save(); renderRanges(); loadChart(); },
+    onclick: () => { state.range = k; save(); renderRanges(); loadChart(); loadEvents().catch(() => {}); },
   }, k === 'run' ? 'This run' : k)));
 }
 
@@ -253,6 +253,85 @@ async function loadChart() {
   }
 }
 $('#include-review').addEventListener('change', loadChart);
+
+// --- events -----------------------------------------------------------------------------------
+// The team marks what happens during the test; markers are drawn on the chart and go into the
+// exports and the report.
+
+const QUICK = 6; // presets shown as buttons; the rest are suggestions in the form
+
+function localInput(ms) {
+  return new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+
+async function addEvent(body) {
+  const ev = await api('/api/events', { method: 'POST', body });
+  toast(`Marked: ${ev.label}`, '', { label: 'Undo', onClick: () => deleteEvent(ev, true) });
+  await loadEvents();
+  return ev;
+}
+
+async function deleteEvent(ev, quiet = false) {
+  if (!quiet && !confirm(`Remove the event “${ev.label}”?`)) return;
+  await api(`/api/events/${ev.id}`, { method: 'DELETE' });
+  if (quiet) toast('Event removed');
+  await loadEvents();
+}
+
+async function endEventNow(ev) {
+  await api(`/api/events/${ev.id}`, { method: 'PATCH', body: { end_ms: Date.now() } });
+  await loadEvents();
+}
+
+let presets = [];
+async function loadEvents() {
+  const since = chartSince();
+  const res = await api(`/api/events?${new URLSearchParams({ since_ms: since, until_ms: Date.now() + 60000 })}`);
+  presets = res.presets;
+  if (!$('#event-presets').children.length) {
+    $('#event-presets').replaceChildren(...presets.slice(0, QUICK).map(label =>
+      el('button', { type: 'button', onclick: () => addEvent({ label }).catch(e => toast(e.message, 'error')) }, label)));
+    const list = el('datalist', { id: 'event-suggestions' }, ...presets.map(p => el('option', { value: p })));
+    $('#event-form').append(list);
+    $('#event-form').label.setAttribute('list', 'event-suggestions');
+  }
+  chart.setEvents(res.events);
+  const evs = [...res.events].reverse();
+  $('#event-list').replaceChildren(...(evs.length ? [el('strong', { class: 'small' }, 'Events in this view'), ...evs.map(ev => el('div', { class: 'ev' },
+    el('time', {}, ev.end_ms ? `${fmtDateTime(ev.t_ms)} – ${fmtTime(ev.end_ms)}` : fmtDateTime(ev.t_ms)),
+    el('strong', {}, ev.label),
+    ev.notes ? el('span', { class: 'muted' }, ev.notes) : null,
+    el('span', { class: 'muted' }, ev.created_by ? `marked by ${ev.created_by}` : ''),
+    el('span', { class: 'spacer' }),
+    !ev.end_ms && Date.now() - ev.t_ms < 6 * 3600e3 ? el('button', { type: 'button', onclick: () => endEventNow(ev).catch(e => toast(e.message, 'error')), title: 'Set when it stopped' }, 'Ended now') : null,
+    el('button', { type: 'button', class: 'danger', onclick: () => deleteEvent(ev).catch(e => toast(e.message, 'error')) }, 'Remove')))] : []));
+}
+
+function chartSince() {
+  const now = Date.now();
+  if (state.range === 'run' && state.ov?.run) return state.ov.run.started_ms;
+  return now - (RANGES.find(([k]) => k === state.range)?.[1] || 6 * 3600e3);
+}
+
+$('#event-open').addEventListener('click', () => {
+  const f = $('#event-form');
+  f.classList.toggle('hidden');
+  if (!f.classList.contains('hidden')) {
+    f.at.value = localInput(Date.now());
+    f.label.focus();
+  }
+});
+$('#event-cancel').addEventListener('click', () => $('#event-form').classList.add('hidden'));
+$('#event-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await addEvent({ label: f.label.value, t_ms: new Date(f.at.value).getTime(),
+      end_ms: f.until.value ? new Date(f.until.value).getTime() : null, notes: f.notes.value || null });
+    f.reset();
+    f.classList.add('hidden');
+  } catch (err) { toast(err.message, 'error'); }
+});
 $('#table-mode').addEventListener('change', e => chart.setTableMode(e.target.checked));
 
 // --- main loop ------------------------------------------------------------------------------
@@ -277,7 +356,8 @@ async function refresh() {
   renderRanges();
   await loadMetrics();
   await loadChart();
+  await loadEvents().catch(() => {});
   setInterval(refresh, 3000);
-  setInterval(() => { renderRanges(); loadChart(); }, 15000);
+  setInterval(() => { renderRanges(); loadChart(); loadEvents().catch(() => {}); }, 15000);
   setInterval(loadMetrics, 60000);
 })();

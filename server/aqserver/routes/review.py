@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 
 from ..db import now_ms
 from ..deps import audit, current_user, get_db
+from ..accuracy import SPOT, SPOT_TARGET, SPOT_UNCLEAR, pick_spot_checks, reading_accuracy
 from ..models import CORRECTED, OK, REJECTED, REVIEW, VERIFIED, Device, Field, Reading
+from .data import _range
 
 router = APIRouter(prefix="/api", tags=["review"])
 
@@ -111,3 +113,48 @@ def list_readings(device_id: int | None = None, metric: str | None = None, since
         q = q.where(Reading.t_ms <= until_ms)
     rows = db.execute(q.order_by(Reading.t_ms.desc()).limit(min(limit, 2000))).all()
     return [_reading_dict(r, d, f) for r, d, f in rows]
+
+
+# --- spot checks: a random sample of automatically accepted readings, checked by a person ----
+
+@router.get("/spotcheck")
+def spot_check_queue(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
+                     limit: int = 10, db: Session = Depends(get_db)):
+    start, end, _ = _range(db, run_id, since_ms, until_ms)
+    picked = pick_spot_checks(db, start, end, min(max(limit, 0), 50)) if limit > 0 else []  # 0: progress only
+    items = []
+    for r in picked:
+        d, f = db.get(Device, r.device_id), db.get(Field, r.field_id)
+        items.append(_reading_dict(r, d, f))
+    progress = [{"device_name": a["device_name"], "metric": a["metric"], "spot_checked": a["spot_checked"],
+                 "accuracy_pct": a["accuracy_pct"], "ci_low": a["ci_low"], "ci_high": a["ci_high"]}
+                for a in reading_accuracy(db, start, end) if a["auto_accepted"]]
+    return {"target": SPOT_TARGET, "items": items, "progress": progress}
+
+
+class SpotIn(BaseModel):
+    action: Literal["right", "wrong", "unclear"]
+    value: float | None = None
+
+
+@router.post("/readings/{reading_id}/spotcheck")
+def spot_check(reading_id: int, body: SpotIn, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    r = db.get(Reading, reading_id)
+    if r is None:
+        raise HTTPException(404, "reading not found")
+    if r.status != OK or r.check_kind is not None:
+        raise HTTPException(409, "this reading was already checked")
+    before = {"status": r.status, "final_value": r.final_value}
+    if body.action == "unclear":
+        r.check_kind = SPOT_UNCLEAR  # stays as it was; not counted either way
+    else:
+        if body.action == "wrong" and body.value is None:
+            raise HTTPException(400, "type the value shown in the picture")
+        value = r.value if body.action == "right" else body.value
+        r.status = VERIFIED if value == r.value else CORRECTED
+        r.final_value, r.check_kind = value, SPOT
+        r.reviewed_by, r.reviewed_ms = user, now_ms()
+    audit(db, user, "reading.spotcheck", reading_id=r.id, action=body.action, before=before,
+          after={"status": r.status, "final_value": r.final_value}, ocr_text=r.raw_text)
+    db.commit()
+    return {"id": r.id, "status": r.status, "final_value": r.final_value, "check_kind": r.check_kind}

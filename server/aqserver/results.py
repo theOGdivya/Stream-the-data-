@@ -146,6 +146,55 @@ def ocr_quality(db: Session, since_ms: int, until_ms: int) -> dict:
     return {"totals": totals, "by_metric": by_metric}
 
 
+# Humidity bands for the breakdown: low-cost PM sensors are known to read high in humid air.
+RH_BANDS = [(None, 50.0, "under 50%"), (50.0, 70.0, "50–70%"), (70.0, None, "70% and above")]
+NO_RH_BREAKDOWN = {"rh", "temp"}
+
+
+def humidity_series(db: Session, since_ms: int, until_ms: int, bucket_ms: int,
+                    ref_key: str | None) -> tuple[str | None, dict[int, float]]:
+    """Relative humidity per averaging period, and where it came from: the reference's own
+    humidity if it has one, else imported humidity data, else the average of the monitors."""
+    rh = [s for s in bucketed(db, "rh", since_ms, until_ms, bucket_ms) if s["points"]]
+    if not rh:
+        return None, {}
+    by_key = {s["key"]: s for s in rh}
+    refs = [s for s in rh if s["kind"] == "reference"]
+    if ref_key in by_key:
+        s = by_key[ref_key]
+        return f"{s['label']}, the reference", {t: v for t, v in s["points"]}
+    if refs:
+        s = max(refs, key=lambda s: len(s["points"]))
+        return s["label"], {t: v for t, v in s["points"]}
+    acc: dict[int, list[float]] = {}
+    for s in rh:
+        for t, v in s["points"]:
+            acc.setdefault(t, []).append(v)
+    return f"average of {len(rh)} monitor{'s' if len(rh) > 1 else ''}", {t: sum(v) / len(v) for t, v in acc.items()}
+
+
+def humidity_breakdown(db: Session, metric: str, since_ms: int, until_ms: int, bucket_ms: int, ref_key: str | None,
+                       pairs: dict[str, list[tuple[float, float, int]]], labels: dict[str, str]) -> dict | None:
+    """Agreement with the reference split by humidity band, for every monitor."""
+    if metric in NO_RH_BREAKDOWN or not pairs:
+        return None
+    source, rh = humidity_series(db, since_ms, until_ms, bucket_ms, ref_key)
+    if not rh:
+        return None
+    rows = []
+    for key, pts in pairs.items():
+        bands = []
+        for lo, hi, _ in RH_BANDS:
+            sel = [(x, y) for x, y, t in pts if t in rh and (lo is None or rh[t] >= lo) and (hi is None or rh[t] < hi)]
+            xs = np.array([p[0] for p in sel], dtype=float)
+            ys = np.array([p[1] for p in sel], dtype=float)
+            st = pair_stats(xs, ys)
+            bands.append({k: st[k] for k in ("n", "mean_ref", "mean", "bias", "bias_pct", "mae")})
+        rows.append({"key": key, "label": labels[key], "bands": bands,
+                     "without_rh": sum(1 for *_, t in pts if t not in rh)})
+    return {"source": source, "bands": [b[2] for b in RH_BANDS], "rows": rows}
+
+
 def compute(db: Session, metric: str, since_ms: int, until_ms: int, avg_s: int, reference: str | None) -> dict:
     bucket_ms = avg_s * 1000
     series = bucketed(db, metric, since_ms, until_ms, bucket_ms)
@@ -153,7 +202,7 @@ def compute(db: Session, metric: str, since_ms: int, until_ms: int, avg_s: int, 
     ref_key = reference if reference in by_key else default_reference(series)
     # Every time bucket the period touches (the first and last may be partial).
     expected = max(1, (until_ms - 1) // bucket_ms - since_ms // bucket_ms + 1)
-    rows, scatter, paired = [], {}, {}
+    rows, scatter, paired, pairs = [], {}, {}, {}
     ref = by_key.get(ref_key)
     fine = {s["key"]: s["points"] for s in bucketed(db, metric, since_ms, until_ms, LAG_BUCKET_S * 1000)} if ref else {}
     for s in series:
@@ -177,11 +226,14 @@ def compute(db: Session, metric: str, since_ms: int, until_ms: int, avg_s: int, 
         sample = pts if len(pts) <= 3000 else [pts[int(i * len(pts) / 3000)] for i in range(3000)]
         scatter[s["key"]] = [[p[0], p[1]] for p in sample]
         paired[s["key"]] = {p[2]: p[1] for p in pts}
+        pairs[s["key"]] = pts
+    labels = {s["key"]: s["label"] for s in series}
     return {
         "metric": metric, "since_ms": since_ms, "until_ms": until_ms, "avg_s": avg_s, "expected_points": expected,
         "reference": {"key": ref_key, "label": ref["label"] if ref else None},
         "series": series, "rows": rows, "scatter": scatter,
         "own_checks": own_device_check(db, metric, since_ms, until_ms),
         "ocr": ocr_quality(db, since_ms, until_ms),
+        "humidity": humidity_breakdown(db, metric, since_ms, until_ms, bucket_ms, ref_key, pairs, labels),
         "_paired": paired, "_ref_points": ref["points"] if ref else [],
     }

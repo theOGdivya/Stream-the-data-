@@ -63,7 +63,7 @@ def export_readings(request: Request, run_id: int | None = None, since_ms: int |
     Session = request.app.state.Session
     header = ["timestamp_utc", "t_ms", "camera_id", "device_id", "device_name", "device_model", "is_own_device",
               "external_id", "metric", "unit", "value", "status", "ocr_text", "ocr_value", "confidence", "note",
-              "reviewed_by", "reviewed_utc", "frame_id", "frame_sha256"]
+              "reviewed_by", "reviewed_utc", "frame_id", "frame_sha256", "spot_check"]
 
     def rows() -> Iterator[list]:
         with Session() as s:
@@ -78,7 +78,7 @@ def export_readings(request: Request, run_id: int | None = None, since_ms: int |
                 yield [iso(r.t_ms), r.t_ms, d.camera_id, d.id, _txt(d.name), _txt(d.model), int(d.is_own), _txt(d.external_id),
                        r.metric, unit or "", "" if r.final_value is None else r.final_value, r.status, r.raw_text,
                        "" if r.value is None else r.value, r.confidence, _txt(r.note), _txt(r.reviewed_by),
-                       iso(r.reviewed_ms), r.frame_id, sha]
+                       iso(r.reviewed_ms), r.frame_id, sha, r.check_kind or ""]
 
     return StreamingResponse(_csv_stream(header, rows()), media_type="text/csv",
                              headers=_attachment(f"readings-{slug}.csv"))

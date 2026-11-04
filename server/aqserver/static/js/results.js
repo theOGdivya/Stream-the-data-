@@ -1,4 +1,4 @@
-import { $, api, cssVar, duration, el, fmtDateTime, fmtValue, renderTopbar, toast } from './common.js';
+import { $, api, cssVar, duration, el, fmtDateTime, fmtValue, getCatalog, metricLabel, renderTopbar, toast } from './common.js';
 import { MetricChart } from './chart.js';
 
 renderTopbar('results.html');
@@ -7,7 +7,7 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const SLOTS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'];
 const AVG_LABEL = { 60: '1-minute', 300: '5-minute', 900: '15-minute', 3600: '1-hour', 86400: '24-hour' };
 const chart = new MetricChart($('#chart'), { height: 300 });
-const state = { res: null, runs: [], order: [] };
+const state = { res: null, runs: [], order: [], catalog: null };
 const form = $('#controls');
 
 const num = (v, d = 2) => (v === null || v === undefined ? '–' : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 }));
@@ -18,7 +18,7 @@ function localInput(ms) {
 }
 
 function params() {
-  const p = new URLSearchParams({ avg_s: form.avg.value });
+  const p = new URLSearchParams({ avg_s: form.avg.value, tz: -new Date().getTimezoneOffset() });
   if (form.run.value === 'custom') {
     p.set('since_ms', new Date(form.from.value).getTime());
     p.set('until_ms', new Date(form.to.value).getTime());
@@ -29,6 +29,7 @@ function params() {
 }
 
 async function init() {
+  state.catalog = await getCatalog();
   state.runs = await api('/api/runs');
   form.run.replaceChildren(...state.runs.map(r => el('option', { value: r.id }, `${r.name}${r.ended_ms ? '' : ' (running)'}`)),
     el('option', { value: 'custom' }, 'Custom time range…'));
@@ -78,8 +79,13 @@ function render(res) {
       run?.notes ? [el('dt', {}, 'Notes'), el('dd', {}, run.notes)] : null,
       el('dt', {}, 'Reading'), el('dd', {}, `${res.metric_label}${unit ? ` (${unit})` : ''}, ${AVG_LABEL[res.avg_s]} averages`),
       el('dt', {}, 'Reference'), el('dd', {}, res.reference.label || '–'),
-      el('dt', {}, 'Monitors'), el('dd', {}, usedDevices.map(d => `${d.name}${d.model ? ` (${d.model})` : ''}${d.is_own ? ' [ours]' : ''}`).join(', ') || '–')),
+      el('dt', {}, 'Monitors'), el('dd', {}, usedDevices.map(d => `${d.name}${d.model ? ` (${d.model})` : ''}${d.is_own ? ' [ours]' : ''}`).join(', ') || '–'),
+      el('dt', {}, 'Events'), el('dd', {}, res.events.length ? el('ul', { class: 'plain' }, res.events.map(e => el('li', {},
+        el('span', { class: 'muted' }, e.end_ms ? `${fmtDateTime(e.t_ms)} – ${fmtDateTime(e.end_ms)}` : fmtDateTime(e.t_ms)), ' ', e.label,
+        e.notes ? el('span', { class: 'muted' }, ` (${e.notes})`) : null)))
+        : el('span', { class: 'muted' }, 'none marked (mark them on the Live page while the test runs)'))),
   );
+  $('#report').href = `/api/results/report.docx?${q}`;
   // stats table
   const cols = [
     ['Monitor', null], ['Pairs', 'Averaging periods where both this monitor and the reference have data'],
@@ -109,18 +115,39 @@ function render(res) {
     `All values in ${unit || 'the reading’s units'} except percentages. Hover a column title for its meaning. Slope 1 and intercept 0 mean the same scale; R² near 1 means it follows the changes.`;
   $('#downloads').replaceChildren(
     el('a', { class: 'btn', href: `/api/results/stats.csv?${q}` }, 'Statistics CSV'),
-    el('a', { class: 'btn', href: `/api/results/pairs.csv?${q}` }, 'Averaged data CSV'));
+    el('a', { class: 'btn', href: `/api/results/pairs.csv?${q}` }, 'Averaged data CSV'),
+    el('a', { class: 'btn', href: `/api/export/events.csv?${q}` }, 'Events CSV'));
 
   // time series
   $('#ts-title').textContent = `Over time (${AVG_LABEL[res.avg_s]} averages)`;
+  chart.events = res.events;
   chart.render({ bucket_ms: res.avg_s * 1000, series: res.series }, state.order, unit, res.metric);
 
   // scatter plots
   $('#scatter').replaceChildren(...(rows.length ? rows.filter(r => res.scatter[r.key]?.length).map(r => scatterCard(r, res)) :
     [el('p', { class: 'muted' }, 'No paired data.')]));
 
+  renderHumidity(res);
   renderQuality(res);
-  $('#methods').textContent = methodsText(res, usedDevices);
+  $('#methods').textContent = res.methods;
+}
+
+// Low-cost PM sensors often read high in humid air: agreement per humidity band.
+function renderHumidity(res) {
+  const h = res.humidity;
+  $('#humidity-panel').classList.toggle('hidden', !h);
+  if (!h) return;
+  const unit = res.unit ? ` ${res.unit}` : '';
+  $('#humidity-help').textContent = `Relative humidity from ${h.source}. Each cell: mean bias against the reference (and in %), ` +
+    'mean absolute error, and the number of averaging periods. A bias that grows with humidity is a known effect in many particle sensors.';
+  $('#humidity').replaceChildren(
+    el('thead', {}, el('tr', {}, el('th', {}, 'Monitor'), h.bands.map(b => el('th', { class: 'numcell' }, `Humidity ${b}`)))),
+    el('tbody', {}, h.rows.map(r => el('tr', {},
+      el('td', {}, el('span', { class: 'swatch-dot', style: `background:${colorFor(r.key)}` }), ' ', r.label),
+      r.bands.map(b => el('td', { class: 'numcell' }, b.n
+        ? [el('div', {}, `${b.bias > 0 ? '+' : ''}${num(b.bias)}${unit} (${b.bias_pct > 0 ? '+' : ''}${pct(b.bias_pct)})`),
+          el('div', { class: 'small muted' }, `MAE ${num(b.mae)} · n ${b.n}`)]
+        : el('span', { class: 'muted' }, '–')))))));
 }
 
 function niceStep(range) {
@@ -198,34 +225,31 @@ function renderQuality(res) {
             el('td', { class: 'numcell' }, c.n), el('td', { class: 'numcell' }, pct(c.exact_pct)), el('td', { class: 'numcell' }, pct(c.within_5pct)),
             el('td', { class: 'numcell' }, `${num(c.mae)}${unit}`)))))))
       : el('p', { class: 'small muted' }, 'Tip: mark one of your own monitors in a camera view (with its cloud ID) and import its cloud data, to measure how accurately the camera reads screens.'),
+    accuracyTable(res),
   );
 }
 
-function methodsText(res, devices) {
-  const run = res.run;
-  const t = res.ocr.totals;
-  const total = Object.values(t).reduce((a, b) => a + b, 0);
-  const p = n => `${((100 * (n || 0)) / (total || 1)).toFixed(1)}%`;
-  const intervals = [...new Set(devices.map(d => d.still_interval_s).filter(Boolean))];
-  const cams = new Set(devices.map(d => d.camera_id)).size;
-  const parts = [];
-  parts.push(`${run ? `Test "${run.name}"` : 'The test'} ran from ${fmtDateTime(res.since_ms)} to ${fmtDateTime(res.until_ms)} (${duration(res.until_ms - res.since_ms)}). ` +
-    `${devices.length} monitor${devices.length === 1 ? ' was' : 's were'} filmed side by side by ${cams} camera${cams === 1 ? '' : 's'}` +
-    `${intervals.length ? `, storing a still picture every ${intervals.join('/')} s` : ''}. ` +
-    `The ${res.metric_label} values shown on each screen were read from the pictures by optical character recognition (OCR). ` +
-    'Each picture was fingerprinted (SHA-256) on the capture computer and verified on arrival at the server; each monitor was re-located in every picture to correct for small camera movements.');
-  if (total) {
-    parts.push(`Of ${total.toLocaleString()} readings in the period, ${p(t.ok)} were accepted automatically, ${p(t.verified)} were confirmed and ${p(t.corrected)} corrected by a reviewer, ` +
-      `and ${p(t.rejected)} were rejected as unreadable; only accepted, confirmed or corrected values were analysed.`);
-  }
-  parts.push(`Values were averaged over ${AVG_LABEL[res.avg_s]} periods and each monitor was compared with ${res.reference.label} using ordinary least-squares regression (slope, intercept, R²), ` +
-    'root-mean-square error (RMSE, also normalised by the reference mean), mean absolute error and mean bias. Data completeness is the share of averaging periods with at least one valid value. ' +
-    'Response delay was estimated by cross-correlating 30-second averages over shifts of up to ±10 minutes.');
-  for (const c of res.own_checks) {
-    parts.push(`As a check on the reading process, values read from the screen of ${c.name} were compared with the values it reported to the cloud: ` +
-      `${c.exact_pct}% matched exactly (n = ${c.n}; mean absolute difference ${num(c.mae)}${res.unit ? ` ${res.unit}` : ''}).`);
-  }
-  return parts.join('\n\n');
+// Reading accuracy from spot checks (random automatically accepted readings checked by a person),
+// plus what the review queue and the odd-jump check did.
+function accuracyTable(res) {
+  const rows = res.accuracy || [];
+  if (!rows.length) return null;
+  const checked = rows.some(a => a.spot_checked);
+  return el('div', {},
+    el('h3', {}, 'Reading accuracy'),
+    el('p', { class: 'small muted' }, checked
+      ? 'Accuracy: share of randomly picked, automatically accepted readings that a person found right (Review → Spot check), with its 95% confidence range.'
+      : 'No spot checks yet. Open Review → Spot check and check about 50 random readings per monitor and reading to measure the accuracy.'),
+    el('div', { class: 'table-wrap' }, el('table', {},
+      el('thead', {}, el('tr', {}, ['Monitor', 'Reading', 'Readings', 'Spot-checked', 'Accuracy', 'Sent to review', 'Machine was right', 'Corrected', 'Unreadable', 'Odd jumps caught']
+        .map((h, i) => el('th', { class: i > 1 ? 'numcell' : null }, h)))),
+      el('tbody', {}, rows.map(a => el('tr', {},
+        el('td', {}, a.device_name), el('td', {}, metricLabel(a.metric, state.catalog)),
+        el('td', { class: 'numcell' }, a.readings.toLocaleString()), el('td', { class: 'numcell' }, a.spot_checked),
+        el('td', { class: 'numcell' }, a.spot_checked ? `${a.accuracy_pct}% (${a.ci_low}–${a.ci_high}%)` : el('a', { href: 'review.html#spot' }, 'check')),
+        el('td', { class: 'numcell' }, a.reviewed), el('td', { class: 'numcell' }, a.review_machine_right),
+        el('td', { class: 'numcell' }, a.review_corrected), el('td', { class: 'numcell' }, a.review_unreadable),
+        el('td', { class: 'numcell' }, a.odd_jumps)))))));
 }
 
 form.addEventListener('submit', e => { e.preventDefault(); load(); });
