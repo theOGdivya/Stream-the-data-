@@ -166,8 +166,8 @@ def live_image(
         headers.update({"X-Kind": "live", "X-Captured-Ms": str(lf.captured_ms)})
         return Response(lf.jpeg, media_type="image/jpeg", headers=headers)
     frame = db.scalars(select(Frame).where(Frame.camera_id == camera_id).order_by(Frame.captured_ms.desc()).limit(1)).first()
-    if frame is None:
-        raise HTTPException(404, "no frames from this camera yet")
+    if frame is None:  # camera just started: "nothing yet" is normal, not an error
+        return Response(status_code=204, headers={**headers, "X-Kind": "none"})
     headers.update({"X-Kind": "still", "X-Captured-Ms": str(frame.captured_ms), "X-Frame-Id": str(frame.id)})
     return FileResponse(_frame_file(settings, frame), media_type="image/jpeg", headers=headers)
 

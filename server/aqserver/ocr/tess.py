@@ -6,8 +6,15 @@ seven-segment reader.
 """
 from __future__ import annotations
 
+import os
+
 import cv2
 import numpy as np
+
+# Tesseract starts one OpenMP thread per CPU core for every call. Several calls at once (the
+# worker plus a Test reading on Calibrate) then fight over the CPU: measured 10.7 s per number
+# with 4 in parallel on 4 cores, against 0.18 s with one thread each. Set before any call.
+os.environ.setdefault("OMP_THREAD_LIMIT", "1")
 
 from .prep import variants
 from .sevenseg import OcrOutput, choose

@@ -208,7 +208,9 @@ export class ImagePoller {
     if (this.visible && !document.hidden) {
       try {
         const res = await fetch(this.urlFn(), { cache: 'no-store', credentials: 'same-origin' });
-        if (res.ok) {
+        if (res.status === 204) {
+          this.onInfo && this.onInfo({ ok: false, status: 204 }); // no picture yet
+        } else if (res.ok) {
           const kind = res.headers.get('x-kind') || 'still';
           const captured = Number(res.headers.get('x-captured-ms')) || null;
           const blob = await res.blob();

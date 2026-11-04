@@ -79,13 +79,14 @@ def test_live_view_requests_live_frames(client, agent_client):
     assert heartbeat(agent_client)["live"] == []
     data = jpeg(render_scene("12", "600")[0])
     upload(agent_client, data)
+    assert client.get("/api/cameras/no-such-cam/live.jpg").status_code == 204  # nothing yet: not an error
     r = client.get("/api/cameras/cam1/live.jpg")  # nobody streaming yet: newest still
     assert r.status_code == 200 and r.headers["x-kind"] == "still"
     assert heartbeat(agent_client)["live"] == ["cam1"]  # viewer present -> agent asked to stream
-    r = agent_client.post("/api/agent/live/cam1", content=b"\xff\xd8live", headers={"X-Captured-Ms": "123"})
+    r = agent_client.post("/api/agent/live/cam1", content=b"\xff\xd8\xfflive", headers={"X-Captured-Ms": "123"})
     assert r.json() == {"watching": True}
     r = client.get("/api/cameras/cam1/live.jpg")
-    assert r.headers["x-kind"] == "live" and r.content == b"\xff\xd8live"
+    assert r.headers["x-kind"] == "live" and r.content == b"\xff\xd8\xfflive"
 
 
 def test_end_to_end_ocr_review_export(client, agent_client, app, settings):
@@ -228,3 +229,17 @@ def test_export_neutralises_spreadsheet_formulas(client, agent_client, app, sett
     process_pending(app.state.Session, settings)
     rows = list(csv.DictReader(io.StringIO(client.get("/api/export/readings.csv").text)))
     assert rows[0]["device_name"].startswith("'=")
+
+
+def test_security_headers_and_non_pictures(client, agent_client):
+    h = client.get("/index.html").headers
+    assert h["x-content-type-options"] == "nosniff" and h["x-frame-options"] == "DENY"
+    assert "default-src 'self'" in h["content-security-policy"] and "frame-ancestors 'none'" in h["content-security-policy"]
+    assert "content-security-policy" not in client.get("/api/docs").headers  # Swagger UI loads from a CDN
+    junk = b"this is not an image"
+    import hashlib
+    import json
+    meta = {"camera_id": "cam1", "captured_ms": 1_700_000_000_000, "sha256": hashlib.sha256(junk).hexdigest()}
+    r = agent_client.post("/api/agent/frames", data={"meta": json.dumps(meta)}, files={"image": ("f.jpg", junk, "image/jpeg")})
+    assert r.status_code == 400 and "JPEG or PNG" in r.text
+    assert agent_client.post("/api/agent/live/cam1", content=junk).status_code == 400

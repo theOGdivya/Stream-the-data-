@@ -27,6 +27,11 @@ browser = APIRouter(prefix="/api/capture", tags=["browser capture"])
 MAX_FRAME_BYTES = 20 * 1024 * 1024
 
 
+def is_picture(data: bytes) -> bool:
+    """JPEG or PNG, by their first bytes. Anything else is not stored as evidence."""
+    return data[:3] == b"\xff\xd8\xff" or data[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 class CameraStatus(BaseModel):
     id: str
     name: str | None = None
@@ -154,6 +159,8 @@ def upload_frame(
         raise HTTPException(413, "frame too large")
     if not data:
         raise HTTPException(400, "empty image")
+    if not is_picture(data):
+        raise HTTPException(400, "not a JPEG or PNG picture")
     sha = hashlib.sha256(data).hexdigest()
     if sha != claimed_sha:
         raise HTTPException(400, "sha256 mismatch: the image was altered or truncated in transit")
@@ -197,7 +204,7 @@ async def upload_live(camera_id: str, request: Request, live: LiveHub = Depends(
     if not valid_camera_id(camera_id):
         raise HTTPException(400, "bad camera_id")
     body = await request.body()
-    if not body or len(body) > MAX_FRAME_BYTES:
+    if not body or len(body) > MAX_FRAME_BYTES or not is_picture(body):
         raise HTTPException(400, "bad live frame")
     try:
         captured_ms = int(request.headers.get("x-captured-ms") or now_ms())

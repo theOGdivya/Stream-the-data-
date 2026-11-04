@@ -10,6 +10,8 @@ import time
 from collections.abc import Callable
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from . import __version__
 from .config import AgentConfig
@@ -28,6 +30,15 @@ class _Session(requests.Session):
 
 def make_session(cfg: AgentConfig) -> requests.Session:
     s = _Session()
+    # The server closes idle keep-alive connections after a few seconds; a request sent on one
+    # just as it closes fails with "connection reset". Retry those once or twice straight away.
+    # Every call is safe to repeat: pictures are recognised by their SHA-256, heartbeats replace
+    # the previous one.
+    retry = Retry(total=3, connect=2, read=2, status=0, other=0, allowed_methods=None, backoff_factor=0.2,
+                  raise_on_status=False)
+    adapter = HTTPAdapter(max_retries=retry)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
     s.headers["Authorization"] = f"Bearer {cfg.agent_token}"
     s.headers["User-Agent"] = f"aqagent/{__version__}"
     s.verify = cfg.verify_tls
@@ -47,24 +58,30 @@ class Uploader(threading.Thread):
         backoff = 2.0
         last_prune = 0.0
         while not self.stop_event.is_set():
-            if time.time() - last_prune > 3600:
-                self.spool.prune_sent()
-                last_prune = time.time()
-            items = self.spool.pending_items(50)
-            if not items:
-                self.stop_event.wait(1.0)
-                continue
-            for item in items:
-                if self.stop_event.is_set():
-                    return
-                result = self._upload(item)
-                if result == "retry":
-                    log.warning("upload failed (%s); %d waiting; retry in %.0fs", self.last_error,
-                                self.spool.backlog(), backoff)
-                    self.stop_event.wait(backoff)
-                    backoff = min(backoff * 2, 60)
-                    break
-                backoff = 2.0
+            try:
+                if time.time() - last_prune > 3600:
+                    last_prune = time.time()
+                    self.spool.prune_sent()
+                items = self.spool.pending_items(50)
+                if not items:
+                    self.stop_event.wait(1.0)
+                    continue
+                for item in items:
+                    if self.stop_event.is_set():
+                        return
+                    result = self._upload(item)
+                    if result == "retry":
+                        log.warning("upload failed (%s); %d waiting; retry in %.0fs", self.last_error,
+                                    self.spool.backlog(), backoff)
+                        self.stop_event.wait(backoff)
+                        backoff = min(backoff * 2, 60)
+                        break
+                    backoff = 2.0
+            except Exception as exc:  # noqa: BLE001 - a disk or file problem must never stop uploads for good
+                self.last_error = f"{type(exc).__name__}: {exc}"[:200]
+                log.exception("upload loop error; retrying in %.0fs", backoff)
+                self.stop_event.wait(backoff)
+                backoff = min(backoff * 2, 60)
 
     def _upload(self, meta_path) -> str:
         img_path = meta_path.with_suffix(".jpg")
@@ -72,6 +89,8 @@ class Uploader(threading.Thread):
             meta = meta_path.read_text(encoding="utf-8")
             data = img_path.read_bytes()
         except FileNotFoundError:
+            if not meta_path.exists():
+                return "sent"  # gone already (moved or cleaned up meanwhile): nothing to do
             self.spool.mark_rejected(meta_path, "image file missing from spool")
             return "rejected"
         try:
