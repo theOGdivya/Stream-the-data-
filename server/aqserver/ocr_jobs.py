@@ -81,11 +81,13 @@ def align_specs(db: Session, settings: Settings, frame: Frame, img: np.ndarray,
 
 
 def read_frame(db: Session, settings: Settings, frame: Frame, img: np.ndarray, specs: list[DeviceSpec],
-               debug: bool = False) -> tuple[list[FieldResult], dict[int, AlignResult]]:
+               debug: bool = False, read_only: bool = False) -> tuple[list[FieldResult], dict[int, AlignResult]]:
     """Align, then read every field. When a monitor could not be matched, its numbers are still
     read where it was last seen: if every one of them reads cleanly the reading stands (status
     "kept"); otherwise they all go to review."""
     aligned, align = align_specs(db, settings, frame, img, specs)
+    if read_only:
+        db.rollback()  # nothing will be written: don't hold a transaction open during the reading
     results = run_frame(img, aligned, settings.review_confidence, debug=debug)
     for dev_id, res in list(align.items()):
         if res.status != "lost":

@@ -1,6 +1,8 @@
 FROM python:3.13-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data
+# OMP_THREAD_LIMIT: one thread per Tesseract call (parallel calls are ~50x faster this way).
+# MPLCONFIGDIR: matplotlib (report figures) needs a writable cache folder.
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data OMP_THREAD_LIMIT=1 MPLCONFIGDIR=/tmp/matplotlib
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tesseract-ocr libglib2.0-0 fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*

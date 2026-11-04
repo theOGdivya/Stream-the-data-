@@ -353,11 +353,12 @@ def ocr_test(body: OcrTestIn, db: Session = Depends(get_db), settings: Settings 
     frame = _frame_or_latest(db, body.camera_id, body.frame_id)
     specs = device_specs(db, body.camera_id)
     img = load_image(settings.data_dir / frame.path)
-    results, align = read_frame(db, settings, frame, img, specs, debug=True)
+    frame_id, captured_ms = frame.id, frame.captured_ms
+    results, align = read_frame(db, settings, frame, img, specs, debug=True, read_only=True)
     recognizer = {f.id: f.recognizer for s in specs for f in s.fields}
     return {
-        "frame_id": frame.id,
-        "captured_ms": frame.captured_ms,
+        "frame_id": frame_id,
+        "captured_ms": captured_ms,
         "alignment": {str(k): v.as_dict() for k, v in align.items()},
         "results": [
             {"device_id": r.device_id, "field_id": r.field_id, "metric": r.metric, "raw_text": r.raw_text,

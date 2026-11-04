@@ -43,7 +43,7 @@ function runTile(ov) {
     refresh();
   } }, input, el('button', { class: 'primary', type: 'submit' }, 'Start'));
   return tile('Test run', el('span', { class: 'pill' }, 'Not recording a run'),
-    'Cameras record anyway; a run marks the test period for Results and exports.', form);
+    'Cameras record anyway, but offline alerts are only raised during a run, and Results and exports use its period.', form);
 }
 
 function renderStrip(ov) {
@@ -104,7 +104,7 @@ function makeCard(cam) {
   const poller = new ImagePoller(img, () => `/api/cameras/${encodeURIComponent(cam.id)}/live.jpg?t=${Date.now()}`, {
     onInfo: info => {
       empty.classList.toggle('hidden', info.ok);
-      if (!info.ok) { badge.className = 'pill badge'; badge.textContent = info.status === 404 ? 'No picture yet' : 'Unavailable'; return; }
+      if (!info.ok) { badge.className = 'pill badge'; badge.textContent = info.status === 204 || info.status === 404 ? 'No picture yet' : 'Unavailable'; return; }
       if (info.kind === 'live') { badge.className = 'pill badge live'; badge.textContent = 'Live'; }
       else { badge.className = 'pill badge'; badge.textContent = `Picture · ${ago(info.captured)}`; }
     },

@@ -19,6 +19,9 @@ log = logging.getLogger(__name__)
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
+    # The folder may have been removed while running (cleanup tools, a user tidying up):
+    # recreate it rather than lose pictures.
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     try:
         with os.fdopen(fd, "wb") as fh:
@@ -50,9 +53,13 @@ class Spool:
         return self.pending / f"{stem}.json"
 
     def pending_items(self, limit: int = 50) -> list[Path]:
+        if not self.pending.is_dir():
+            return []
         return sorted(self.pending.glob("*.json"))[:limit]
 
     def backlog(self) -> int:
+        if not self.pending.is_dir():
+            return 0
         return sum(1 for _ in self.pending.glob("*.json"))
 
     def _move(self, meta_path: Path, dest_dir: Path) -> None:
@@ -79,6 +86,8 @@ class Spool:
         if self.keep_sent_days <= 0:
             return
         cutoff = time.time() - self.keep_sent_days * 86400
+        if not self.sent.is_dir():
+            return
         for day_dir in self.sent.iterdir():
             try:
                 day = datetime.strptime(day_dir.name, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()

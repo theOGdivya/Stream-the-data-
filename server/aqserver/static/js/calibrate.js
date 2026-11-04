@@ -305,6 +305,9 @@ $('#frame-svg').addEventListener('pointerdown', async e => {
     }
     state.pending = null;
     state.deviceId = id;
+    state.fieldId = null; // a number of another monitor must not stay selected
+    state.draftBox = null;
+    $('#field-form').classList.add('hidden');
     await refreshAll();
     $('#screen-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
@@ -501,19 +504,22 @@ $('#field-form').addEventListener('submit', async e => {
     min_value: num(form.min_value.value), max_value: num(form.max_value.value),
   };
   try {
+    const label = form.label.value.trim() || metricLabel(form.metric.value, state.catalog);
     if (state.fieldId) {
       if (state.draftBox) body.box = state.draftBox;
       await api(`/api/fields/${state.fieldId}`, { method: 'PATCH', body });
+      toast(`${label} saved. Testing…`);
     } else {
       if (!state.draftBox) { toast('Drag a box around the number first', 'error'); return; }
       body.box = state.draftBox;
-      const f = await api(`/api/devices/${state.deviceId}/fields`, { method: 'POST', body });
-      state.fieldId = f.id;
+      await api(`/api/devices/${state.deviceId}/fields`, { method: 'POST', body });
+      toast(`${label} saved. Drag a box around the next number, or check the test below.`);
     }
+    // Done with this number: the next box drawn makes a new one (click a number in the list to edit it).
+    state.fieldId = null;
     state.draftBox = null;
-    toast('Saved. Testing…');
+    $('#field-form').classList.add('hidden');
     await refreshAll();
-    selectField(state.fieldId);
     await runTest();
   } catch (err) {
     toast(err.message, 'error');
