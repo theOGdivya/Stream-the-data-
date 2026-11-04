@@ -143,3 +143,9 @@ Not built yet:
 - Support for monitors that cycle between screens (PM2.5, then CO₂, ...).
 - A learned digit reader trained on your corrected readings, for unusual fonts.
 - Pulling your own monitors' data straight from your cloud's API (for now: CSV upload or JSON push).
+
+## Licence
+
+© 2026 EMERGESPHERE Technologies Pvt. Ltd. All rights reserved. This software is proprietary:
+see [LICENSE](LICENSE). Open-source components it uses keep their own licences:
+see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,0 +1,25 @@
+Copyright (c) 2026 EMERGESPHERE Technologies Pvt. Ltd. All rights reserved.
+
+AQ Test Platform (the "Software") - the server, the dashboard, the capture program,
+the deployment files and the documentation in this repository - is the proprietary
+property of EMERGESPHERE Technologies Pvt. Ltd. ("EMERGESPHERE").
+
+No licence is granted to anyone outside EMERGESPHERE. Without prior written
+permission from EMERGESPHERE you may not use, copy, modify, merge, publish,
+distribute, sublicense, sell, or create derivative works from the Software, in
+whole or in part. Being able to view this source code (for example on a public
+code-hosting site) does not grant any of these rights.
+
+Employees and contractors of EMERGESPHERE who are authorised by EMERGESPHERE may
+use, copy and modify the Software for EMERGESPHERE's own purposes.
+
+Third-party components included with or used by the Software remain under their
+own licences, listed in THIRD_PARTY_NOTICES.md. Nothing in this licence limits
+the rights those licences grant.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL EMERGESPHERE BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

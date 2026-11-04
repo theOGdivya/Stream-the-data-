@@ -24,6 +24,7 @@ from .models import GOOD_STATUSES, Camera, Device, Frame, Reading, ReferenceRead
 from .ocr.pipeline import METRICS
 from .results import compute
 
+COPYRIGHT = "© 2026 EMERGESPHERE Technologies Pvt. Ltd. All rights reserved."
 AVG_LABEL = {60: "1-minute", 300: "5-minute", 900: "15-minute", 3600: "1-hour", 86400: "24-hour"}
 # Same colours as the dashboard charts (light theme), so figures match what the team sees.
 PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
@@ -360,6 +361,9 @@ def build_report(db: Session, settings: Settings, *, run: dict | None, since_ms:
     for sec in doc.sections:
         sec.left_margin = sec.right_margin = Inches(0.75)
         sec.top_margin = sec.bottom_margin = Inches(0.7)
+        foot = sec.footer.paragraphs[0]
+        foot.text = COPYRIGHT
+        foot.runs[0].font.size = Pt(8)
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(10)
     title = f"Side-by-side test: {run['name']}" if run else "Side-by-side test results"

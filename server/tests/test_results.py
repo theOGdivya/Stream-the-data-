@@ -155,6 +155,7 @@ def test_word_report(client, app, dataset):
     doc = docx.Document(io.BytesIO(r.content))
     text = "\n".join(p.text for p in doc.paragraphs)
     assert doc.core_properties.author == "tester"
+    assert "EMERGESPHERE Technologies" in doc.sections[0].footer.paragraphs[0].text
     for heading in ("1. Key figures", "2. Test setup", "3. Events during the test", "4. Results", "5. Reading quality",
                     "7. Methods (draft)"):
         assert heading in text
