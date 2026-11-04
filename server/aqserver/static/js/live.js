@@ -188,6 +188,10 @@ function renderOnboarding(ov) {
   try { dismissed = localStorage.getItem('onboard.hide') === '1'; } catch { /* ignore */ }
   panel.classList.toggle('hidden', Boolean(done) || dismissed);
   if (done || dismissed) return;
+  // Redraw only when a step changes, so focus and screen readers are not disturbed every 3 s.
+  const key = steps.map(([ok]) => (ok ? 1 : 0)).join('');
+  if (panel.dataset.key === key) return;
+  panel.dataset.key = key;
   const next = steps.findIndex(([ok]) => !ok);
   panel.replaceChildren(
     el('div', { class: 'panel-head', style: 'margin-bottom:0' }, el('h2', {}, 'Getting started'),

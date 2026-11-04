@@ -36,6 +36,7 @@ class AlignResult:
     corners: list[list[float]]
     shift_px: float = 0.0
     inliers: int = 0
+    may_keep: bool = False  # lost, but matched recently enough to keep reading at the last position
 
     def as_dict(self) -> dict:
         d = {"status": self.status, "shift_px": round(self.shift_px, 1), "inliers": self.inliers}
@@ -55,50 +56,59 @@ def _rect(corners: list[list[float]], shape: tuple[int, ...], margin: float, min
 
 class Aligner:
     def __init__(self, nfeatures: int = 1500, cache_size: int = 64):
-        self._orb = cv2.ORB_create(nfeatures=nfeatures)
-        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        self._matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        self._nfeatures = nfeatures
+        self._local = threading.local()  # OpenCV feature objects are not thread-safe: one set per thread
         self._cache: OrderedDict[Hashable, tuple] = OrderedDict()
         self._cache_size = cache_size
-        self._lock = threading.Lock()  # OpenCV feature objects are not thread-safe
+        self._lock = threading.Lock()  # guards the reference cache only, so cameras align in parallel
+
+    def _tools(self):
+        t = self._local
+        if not hasattr(t, "orb"):
+            t.orb = cv2.ORB_create(nfeatures=self._nfeatures)
+            t.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            t.matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        return t
 
     def _features(self, gray: np.ndarray, rect: tuple[int, int, int, int]):
         x0, y0, x1, y1 = rect
         roi = gray[y0:y1, x0:x1]
         if roi.size == 0:
             return np.empty((0, 2), np.float32), None
-        roi = self._clahe.apply(roi)  # evens out day/night lighting differences
-        kps, des = self._orb.detectAndCompute(roi, None)
+        tools = self._tools()
+        roi = tools.clahe.apply(roi)  # evens out day/night lighting differences
+        kps, des = tools.orb.detectAndCompute(roi, None)
         pts = np.float32([kp.pt for kp in kps]).reshape(-1, 2) + np.float32([x0, y0])
         return pts, des
 
     def _reference(self, key: Hashable, load_ref: Callable[[], np.ndarray | None], corners):
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            return self._cache[key]
-        ref = load_ref()
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+        ref = load_ref()  # outside the lock: disk and database reads must not block other cameras
         if ref is None:
             entry = (None, None)
         else:
             entry = self._features(ref, _rect(corners, ref.shape, REF_MARGIN, 20))
-        self._cache[key] = entry
-        if len(self._cache) > self._cache_size:
-            self._cache.popitem(last=False)
+        with self._lock:
+            self._cache[key] = entry
+            if len(self._cache) > self._cache_size:
+                self._cache.popitem(last=False)
         return entry
 
     def align(self, key: Hashable, load_ref: Callable[[], np.ndarray | None], gray: np.ndarray,
               corners: list[list[float]]) -> AlignResult:
-        with self._lock:
-            ref_pts, ref_des = self._reference(key, load_ref, corners)
-            if ref_des is None or len(ref_pts) < 3 * MIN_INLIERS:
-                return AlignResult("unchecked", corners)
-            pts = np.asarray(corners, dtype=float)
-            size = float(max(np.ptp(pts[:, 0]), np.ptp(pts[:, 1])))
-            search = _rect(corners, gray.shape, REF_MARGIN + SEARCH_MARGIN, int(max(80, 0.3 * size)))
-            cur_pts, cur_des = self._features(gray, search)
-            if cur_des is None or len(cur_pts) < MIN_INLIERS:
-                return AlignResult("lost", corners)
-            pairs = self._matcher.knnMatch(ref_des, cur_des, k=2)
+        ref_pts, ref_des = self._reference(key, load_ref, corners)
+        if ref_des is None or len(ref_pts) < 3 * MIN_INLIERS:
+            return AlignResult("unchecked", corners)
+        pts = np.asarray(corners, dtype=float)
+        size = float(max(np.ptp(pts[:, 0]), np.ptp(pts[:, 1])))
+        search = _rect(corners, gray.shape, REF_MARGIN + SEARCH_MARGIN, int(max(80, 0.3 * size)))
+        cur_pts, cur_des = self._features(gray, search)
+        if cur_des is None or len(cur_pts) < MIN_INLIERS:
+            return AlignResult("lost", corners)
+        pairs = self._tools().matcher.knnMatch(ref_des, cur_des, k=2)
         good = [m[0] for m in pairs if len(m) == 2 and m[0].distance < 0.8 * m[1].distance]
         if len(good) < MIN_INLIERS:
             return AlignResult("lost", corners, inliers=len(good))

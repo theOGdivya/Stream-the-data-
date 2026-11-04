@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from .accuracy import reading_accuracy, wilson
 from .config import Settings
+from .events import event_dict, events_between
 from .models import GOOD_STATUSES, Camera, Device, Frame, Reading, ReferenceReading
 from .ocr.pipeline import METRICS
 from .results import compute
@@ -197,7 +198,6 @@ def metrics_in_period(db: Session, since_ms: int, until_ms: int) -> list[str]:
 
 
 def event_dicts(db: Session, since_ms: int, until_ms: int) -> list[dict]:
-    from .routes.events import event_dict, events_between
     return [event_dict(e) for e in events_between(db, since_ms, until_ms)]
 
 

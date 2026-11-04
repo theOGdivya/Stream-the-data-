@@ -5,11 +5,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field as PField
-from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..db import now_ms
 from ..deps import audit, current_user, get_db
+from ..events import event_dict, events_between
 from ..models import Event
 from ..storage import iso
 from .data import _attachment, _csv_stream, _range, _txt
@@ -20,20 +20,6 @@ router = APIRouter(prefix="/api", tags=["events"])
 PRESETS = ["Incense lit", "Candle lit", "Cooking started", "Cooking stopped", "Window opened", "Window closed",
            "Door opened", "Door closed", "Purifier on", "Purifier off", "People entered", "People left",
            "Monitors moved", "Power cut"]
-
-
-def event_dict(e: Event) -> dict:
-    return {"id": e.id, "t_ms": e.t_ms, "end_ms": e.end_ms, "label": e.label, "notes": e.notes,
-            "created_by": e.created_by, "created_ms": e.created_ms}
-
-
-def events_between(db: Session, since_ms: int, until_ms: int) -> list[Event]:
-    """Events that happen in the period (or, for ones that lasted, overlap it)."""
-    return db.scalars(
-        select(Event).where(Event.t_ms <= until_ms,
-                            or_(Event.t_ms >= since_ms, Event.end_ms >= since_ms))
-        .order_by(Event.t_ms, Event.id)
-    ).all()
 
 
 class EventIn(BaseModel):

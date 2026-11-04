@@ -121,6 +121,7 @@ class Device(Base):
     align_shift_px: Mapped[float | None] = mapped_column(Float)
     align_corners: Mapped[list[list[float]] | None] = mapped_column(JSON)
     align_ms: Mapped[int | None] = mapped_column(BigInteger)  # capture time of the frame last checked
+    align_good_ms: Mapped[int | None] = mapped_column(BigInteger)  # last picture where it matched (ok/adjusted)
 
 
 class Field(Base):

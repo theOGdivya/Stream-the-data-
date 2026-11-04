@@ -151,6 +151,15 @@ def test_failed_match_keeps_readings_flowing(client, agent_client, app, settings
         assert not any(a.kind == "view_lost" for a in db.scalars(select(Alert)).all())
     acc = client.post(f"/api/devices/{dev['id']}/accept-alignment").json()
     assert acc["ref_frame_id"] == fid and acc["corners"] == SCENE_CORNERS
+    # Still no match 40 minutes later: the camera may really have moved, so a person checks.
+    late = upload(agent_client, jpeg(render_scene("42", "906", seed=2)[0]), captured_ms=t0 + 40 * 60_000).json()["id"]
+    process_pending(app.state.Session, settings)
+    r = _readings(client, late)
+    assert r["pm25"]["status"] == "review" and "not found" in r["pm25"]["note"]
+    with app.state.Session() as db:
+        assert db.get(Device, dev["id"]).align_status == "lost"
+    acc = client.post(f"/api/devices/{dev['id']}/accept-alignment")
+    assert acc.status_code == 400  # nothing to accept while lost: re-mark the corners instead
 
 
 def test_monitors_marked_before_upgrade_get_a_reference(client, agent_client, app, settings):

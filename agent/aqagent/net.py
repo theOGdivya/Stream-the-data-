@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.exceptions import ReadTimeoutError
 from urllib3.util.retry import Retry
 
 from . import __version__
@@ -28,14 +29,24 @@ class _Session(requests.Session):
         return super().request(*args, **kwargs)
 
 
+class _ResetRetry(Retry):
+    """Retry dropped connections, but not read timeouts: on a slow link a 60 s timeout repeated
+    would hold up the upload queue for minutes; the uploader's own backoff handles those."""
+
+    def increment(self, *args, error=None, **kwargs):
+        if isinstance(error, ReadTimeoutError):
+            raise error
+        return super().increment(*args, error=error, **kwargs)
+
+
 def make_session(cfg: AgentConfig) -> requests.Session:
     s = _Session()
     # The server closes idle keep-alive connections after a few seconds; a request sent on one
     # just as it closes fails with "connection reset". Retry those once or twice straight away.
     # Every call is safe to repeat: pictures are recognised by their SHA-256, heartbeats replace
     # the previous one.
-    retry = Retry(total=3, connect=2, read=2, status=0, other=0, allowed_methods=None, backoff_factor=0.2,
-                  raise_on_status=False)
+    retry = _ResetRetry(total=3, connect=2, read=2, status=0, other=0, allowed_methods=None, backoff_factor=0.2,
+                        raise_on_status=False)
     adapter = HTTPAdapter(max_retries=retry)
     s.mount("http://", adapter)
     s.mount("https://", adapter)

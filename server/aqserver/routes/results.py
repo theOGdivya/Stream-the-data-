@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..accuracy import reading_accuracy
 from ..db import now_ms
 from ..config import Settings
-from ..deps import current_user, get_db, get_settings
+from ..deps import current_user, get_read_db, get_settings
 from ..models import Field, ReferenceReading, TestRun
 from ..ocr.pipeline import METRICS
 from ..report import Clock, build_report, device_list, event_dicts, methods_text
@@ -48,7 +48,7 @@ def _params(db: Session, run_id: int | None, since_ms: int | None, until_ms: int
 @router.get("/results")
 def results(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
             metric: str | None = None, avg_s: int = 3600, reference: str | None = None, tz: int = 0,
-            db: Session = Depends(get_db)):
+            db: Session = Depends(get_read_db)):
     """``tz``: the reader's time zone in minutes east of UTC, for the draft methods text."""
     since, until, metric, run = _params(db, run_id, since_ms, until_ms, metric, avg_s)
     res = compute(db, metric, since, until, avg_s, reference)
@@ -74,7 +74,7 @@ def results(run_id: int | None = None, since_ms: int | None = None, until_ms: in
 @router.get("/results/report.docx")
 def results_report(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
                    metric: str | None = None, avg_s: int = 3600, reference: str | None = None, tz: int = 0,
-                   db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                   db: Session = Depends(get_read_db), settings: Settings = Depends(get_settings),
                    user: str = Depends(current_user)):
     """Everything for the white paper in one Word document (Word can save it as PDF)."""
     since, until, metric, run = _params(db, run_id, since_ms, until_ms, metric, avg_s)
@@ -99,7 +99,7 @@ def _txt(v):
 @router.get("/results/stats.csv")
 def results_stats_csv(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
                       metric: str | None = None, avg_s: int = 3600, reference: str | None = None,
-                      db: Session = Depends(get_db)):
+                      db: Session = Depends(get_read_db)):
     since, until, metric, run = _params(db, run_id, since_ms, until_ms, metric, avg_s)
     res = compute(db, metric, since, until, avg_s, reference)
     cols = ["label", "model", "is_reference", "n", "completeness_pct", "mean_ref", "mean", "slope", "intercept", "r2",
@@ -121,7 +121,7 @@ def results_stats_csv(run_id: int | None = None, since_ms: int | None = None, un
 @router.get("/results/pairs.csv")
 def results_pairs_csv(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
                       metric: str | None = None, avg_s: int = 3600, reference: str | None = None,
-                      db: Session = Depends(get_db)):
+                      db: Session = Depends(get_read_db)):
     """The averaged values behind the statistics: one row per time bucket, reference first."""
     since, until, metric, run = _params(db, run_id, since_ms, until_ms, metric, avg_s)
     res = compute(db, metric, since, until, avg_s, reference)
