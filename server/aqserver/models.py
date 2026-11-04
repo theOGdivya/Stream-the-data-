@@ -162,6 +162,23 @@ class Reading(Base):
     note: Mapped[str | None] = mapped_column(String(255))
     reviewed_by: Mapped[str | None] = mapped_column(String(64))
     reviewed_ms: Mapped[int | None] = mapped_column(BigInteger)
+    # "spot": an automatically accepted reading picked at random and checked by a person (for
+    # the accuracy figure); "spot-unclear": picked, but the picture was not clear enough to say.
+    check_kind: Mapped[str | None] = mapped_column(String(16))
+
+
+class Event(Base):
+    """Something that happened during a test ("Incense lit", "Window opened"), drawn on the
+    charts and listed in exports and the report. ``end_ms`` is set for things that lasted."""
+
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    t_ms: Mapped[int] = mapped_column(BigInteger, index=True)
+    end_ms: Mapped[int | None] = mapped_column(BigInteger)
+    label: Mapped[str] = mapped_column(String(128))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    created_ms: Mapped[int] = mapped_column(BigInteger, default=now_ms)
 
 
 class ReferenceReading(Base):

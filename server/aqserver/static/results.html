@@ -28,9 +28,10 @@
           </select>
         </label>
         <label class="field">Compare against <select name="reference"></select></label>
-        <div class="row">
-          <button type="submit" class="primary">Update</button>
-          <button type="button" id="print">Print / save as PDF</button>
+        <div class="row" style="grid-column: 1 / -1">
+          <button type="submit">Update</button>
+          <a class="btn primary" id="report" href="#">Download report (Word)</a>
+          <button type="button" id="print">Print page / PDF</button>
         </div>
       </form>
       <p class="small muted" style="margin:8px 0 0">Only readings accepted automatically, or confirmed or corrected in Review, are used.
@@ -61,6 +62,12 @@
       <div class="panel-head"><h2>Each monitor against the reference</h2></div>
       <p class="small muted" style="margin-top:0">Each dot is one averaging period. Dashed grey line: perfect agreement (1:1). Coloured line: fitted regression.</p>
       <div class="scatter-grid" id="scatter"></div>
+    </section>
+
+    <section class="panel hidden" id="humidity-panel">
+      <div class="panel-head"><h2>By humidity</h2></div>
+      <p class="small muted" style="margin-top:0" id="humidity-help"></p>
+      <div class="table-wrap"><table id="humidity"></table></div>
     </section>
 
     <section class="panel">

@@ -9,7 +9,25 @@
 </head>
 <body>
   <main>
-    <section class="panel">
+    <div class="seg" role="tablist" aria-label="Review mode" style="margin-bottom:12px">
+      <button type="button" role="tab" id="tab-queue" aria-selected="true" aria-pressed="true">Waiting for review</button>
+      <button type="button" role="tab" id="tab-spot" aria-selected="false" aria-pressed="false">Spot check (accuracy)</button>
+    </div>
+    <div id="spot" class="hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <h1>Spot check</h1>
+          <div class="spacer"></div>
+          <label class="row small">Test run <select id="spot-run"></select></label>
+        </div>
+        <p class="muted small" style="margin:0">These readings were accepted <strong>automatically</strong> and are picked at random.
+          Say whether each one matches the picture. The share found right is the reading accuracy reported on the Results page and in the report,
+          with a 95% confidence range. About <span id="spot-target">50</span> checks per monitor and reading are enough.</p>
+        <div class="table-wrap" style="margin-top:10px"><table id="spot-progress"></table></div>
+      </section>
+      <section class="review-list" id="spot-list"></section>
+    </div>
+    <section class="panel" id="queue-head">
       <div class="panel-head">
         <h1>Review readings</h1>
         <span class="pill" id="total">…</span>
@@ -20,7 +38,7 @@
           <select id="f-order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select>
         </label>
       </div>
-      <p class="muted small" style="margin:0">These readings were unclear, outside the plausible range, or flagged by someone.
+      <p class="muted small" style="margin:0">These readings were unclear, outside the plausible range, an unusual jump, or flagged by someone.
         Check the picture, then confirm the reading, type the right value (Enter saves), or mark it unreadable. Every decision is logged with your name.</p>
       <p class="small" id="stats" style="margin:8px 0 0"></p>
     </section>

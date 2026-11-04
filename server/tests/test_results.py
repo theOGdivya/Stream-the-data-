@@ -109,3 +109,60 @@ def test_results_defaults_and_csv(client, dataset):
     assert pairs[0][1] == "BAM (ref-instrument) (reference)" and len(pairs) == 38
     assert client.get("/api/results", params={"run_id": dataset["run"], "avg_s": 7}).status_code == 400
     assert client.get("/api/results").status_code == 400
+
+
+def test_humidity_breakdown(client, app, dataset):
+    res = client.get("/api/results", params={"run_id": dataset["run"], "avg_s": 300}).json()
+    assert res["humidity"] is None  # no humidity data yet
+    with app.state.Session() as db:
+        for i in range(180):  # dry for the first hour, humid after
+            t = T0 + i * STEP
+            db.add(ReferenceReading(source="ref-instrument", device_ref="BAM", metric="rh", t_ms=t,
+                                    value=40.0 if i < 60 else 80.0))
+        db.commit()
+    res = client.get("/api/results", params={"run_id": dataset["run"], "avg_s": 300,
+                                             "reference": "ref:ref-instrument:BAM"}).json()
+    hum = res["humidity"]
+    assert hum["source"] == "BAM (ref-instrument), the reference"
+    assert hum["bands"] == ["under 50%", "50–70%", "70% and above"]
+    ours = next(r for r in hum["rows"] if r["label"] == "Ours")
+    # The 5-minute period that spans the change averages ~56% and lands in the middle band.
+    assert [b["n"] for b in ours["bands"]] == [12, 1, 24] and ours["without_rh"] == 0
+    assert ours["bands"][0]["bias"] is not None and ours["bands"][2]["mae"] is not None
+    stats = client.get("/api/results/stats.csv", params={"run_id": dataset["run"], "avg_s": 300}).text
+    assert "humidity_breakdown" in stats and "Ours,70% and above,24," in stats
+    # Humidity itself gets no humidity breakdown.
+    assert client.get("/api/results", params={"run_id": dataset["run"], "metric": "rh"}).json()["humidity"] is None
+
+
+def test_word_report(client, app, dataset):
+    import docx
+
+    with app.state.Session() as db:
+        for i in range(180):
+            db.add(ReferenceReading(source="ref-instrument", device_ref="BAM", metric="rh", t_ms=T0 + i * STEP,
+                                    value=40.0 if i < 60 else 80.0))
+        db.commit()
+    client.post("/api/events", json={"label": "Incense lit", "t_ms": T0 + 85 * STEP, "end_ms": T0 + 95 * STEP})
+    client.post("/api/events", json={"label": "Window opened", "t_ms": T0 + 120 * STEP})
+    res = client.get("/api/results", params={"run_id": dataset["run"], "avg_s": 300, "tz": 330}).json()
+    assert [e["label"] for e in res["events"]] == ["Incense lit", "Window opened"]
+    assert "UTC+05:30" in res["methods"] and "2 events were recorded" in res["methods"]
+    assert "relative humidity" in res["methods"]
+
+    r = client.get("/api/results/report.docx", params={"run_id": dataset["run"], "avg_s": 300, "tz": 330})
+    assert r.status_code == 200 and r.headers["content-disposition"] == 'attachment; filename="report-lab-test.docx"'
+    doc = docx.Document(io.BytesIO(r.content))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert doc.core_properties.author == "tester"
+    for heading in ("1. Key figures", "2. Test setup", "3. Events during the test", "4. Results", "5. Reading quality",
+                    "7. Methods (draft)"):
+        assert heading in text
+    import re
+    m = re.search(r"Ours: slope (\d\.\d{3}), R² (\d\.\d{3})", text)
+    assert m and abs(float(m.group(1)) - 1.1) < 0.02 and float(m.group(2)) > 0.99 and "UTC+05:30" in text
+    tables = ["\n".join("|".join(c.text for c in row.cells) for row in t.rows) for t in doc.tables]
+    assert any("Incense lit" in t for t in tables)
+    assert any("70% and above" in t for t in tables)  # humidity breakdown
+    assert any("Odd jumps caught" in t for t in tables)
+    assert len(doc.inline_shapes) >= 2  # time series and scatter figures

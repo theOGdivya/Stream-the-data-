@@ -3,16 +3,20 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..accuracy import reading_accuracy
 from ..db import now_ms
-from ..deps import get_db
-from ..models import Camera, Device, Field, ReferenceReading, TestRun
+from ..config import Settings
+from ..deps import current_user, get_db, get_settings
+from ..models import Field, ReferenceReading, TestRun
 from ..ocr.pipeline import METRICS
+from ..report import Clock, build_report, device_list, event_dicts, methods_text
 from ..results import AVG_CHOICES_S, compute
 from ..storage import iso
 
@@ -43,21 +47,42 @@ def _params(db: Session, run_id: int | None, since_ms: int | None, until_ms: int
 
 @router.get("/results")
 def results(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
-            metric: str | None = None, avg_s: int = 3600, reference: str | None = None, db: Session = Depends(get_db)):
+            metric: str | None = None, avg_s: int = 3600, reference: str | None = None, tz: int = 0,
+            db: Session = Depends(get_db)):
+    """``tz``: the reader's time zone in minutes east of UTC, for the draft methods text."""
     since, until, metric, run = _params(db, run_id, since_ms, until_ms, metric, avg_s)
     res = compute(db, metric, since, until, avg_s, reference)
     res.pop("_paired")
     res.pop("_ref_points")
-    devices = db.scalars(select(Device).where(Device.active.is_(True)).order_by(Device.id)).all()
-    cams = {c.id: c for c in db.scalars(select(Camera)).all()}
+    devices = device_list(db)
     res["run"] = run
+    res["accuracy"] = reading_accuracy(db, since, until)
+    res["events"] = event_dicts(db, since, until)
     res["unit"] = METRICS.get(metric, {}).get("unit", "")
     res["metric_label"] = METRICS.get(metric, {}).get("label", metric)
-    res["devices"] = [{"id": d.id, "name": d.name, "model": d.model, "is_own": d.is_own, "external_id": d.external_id,
-                       "camera_id": d.camera_id,
-                       "still_interval_s": cams[d.camera_id].still_interval_s if d.camera_id in cams else None}
-                      for d in devices]
+    res["devices"] = devices
+    used = {s["device_id"] for s in res["series"] if s["kind"] == "camera"}
+    res["methods"] = methods_text(
+        run=run, since_ms=since, until_ms=until, avg_s=avg_s, devices=[d for d in devices if d["id"] in used],
+        comparisons=[(metric, res["reference"]["label"])], ocr=res["ocr"],
+        accuracy=[a for a in res["accuracy"] if a["metric"] == metric], events=res["events"],
+        humidity_source=(res["humidity"] or {}).get("source"),
+        own_checks=[dict(c, metric=metric) for c in res["own_checks"]], clock=Clock(tz))
     return res
+
+
+@router.get("/results/report.docx")
+def results_report(run_id: int | None = None, since_ms: int | None = None, until_ms: int | None = None,
+                   metric: str | None = None, avg_s: int = 3600, reference: str | None = None, tz: int = 0,
+                   db: Session = Depends(get_db), settings: Settings = Depends(get_settings),
+                   user: str = Depends(current_user)):
+    """Everything for the white paper in one Word document (Word can save it as PDF)."""
+    since, until, metric, run = _params(db, run_id, since_ms, until_ms, metric, avg_s)
+    data = build_report(db, settings, run=run, since_ms=since, until_ms=until, avg_s=avg_s, metric=metric,
+                        reference=reference, tz_min=tz, user=user)
+    slug = re.sub(r"[^a-z0-9]+", "-", (run["name"] if run else "results").lower()).strip("-") or "results"
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="report-{slug}.docx"', "Cache-Control": "no-store"})
 
 
 def _csv(rows: list[list], name: str) -> Response:
@@ -82,6 +107,14 @@ def results_stats_csv(run_id: int | None = None, since_ms: int | None = None, un
     rows = [["metric", metric, "unit", METRICS.get(metric, {}).get("unit", ""), "averaging_s", avg_s,
              "reference", res["reference"]["label"], "from_utc", iso(since), "to_utc", iso(until)], cols]
     rows += [[_txt(r.get(c)) if r.get(c) is not None else "" for c in cols] for r in res["rows"]]
+    hum = res.get("humidity")
+    if hum:
+        rows += [[], ["humidity_breakdown", "relative humidity from", _txt(hum["source"])],
+                 ["label", "humidity_band", "n", "mean_ref", "mean", "bias", "bias_pct", "mae"]]
+        for r in hum["rows"]:
+            for band, b in zip(hum["bands"], r["bands"]):
+                rows.append([_txt(r["label"]), band, *["" if b[k] is None else b[k]
+                                                        for k in ("n", "mean_ref", "mean", "bias", "bias_pct", "mae")]])
     return _csv(rows, f"results-{metric}-{avg_s}s.csv")
 
 

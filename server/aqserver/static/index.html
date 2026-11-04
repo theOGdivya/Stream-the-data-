@@ -28,8 +28,23 @@
         <label class="row"><input type="checkbox" id="include-review"> Include readings not yet reviewed</label>
         <label class="row"><input type="checkbox" id="table-mode"> Show as table</label>
       </div>
+      <div class="events-bar">
+        <span class="small muted">Mark what happens now:</span>
+        <span class="row" id="event-presets"></span>
+        <button type="button" id="event-open">Other / earlier…</button>
+      </div>
+      <form id="event-form" class="event-form hidden" aria-label="Mark an event">
+        <div class="form-grid">
+          <label class="field">What happened <input name="label" maxlength="128" required placeholder="e.g. Incense lit near monitor 2"></label>
+          <label class="field">When <input type="datetime-local" name="at" step="1" required></label>
+          <label class="field">Until (optional, if it lasted) <input type="datetime-local" name="until" step="1"></label>
+          <label class="field">Notes (optional) <input name="notes" maxlength="2000"></label>
+        </div>
+        <div class="row"><button type="submit" class="primary">Save event</button><button type="button" id="event-cancel">Cancel</button></div>
+      </form>
       <div id="chart"></div>
       <p class="muted small" id="chart-note"></p>
+      <div id="event-list" class="event-list"></div>
     </section>
   </main>
 

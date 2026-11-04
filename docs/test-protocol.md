@@ -15,7 +15,7 @@ the test is set up. This checklist covers both.
 
   The usual metrics are R², slope and intercept, RMSE, mean bias, unit-to-unit precision, and data completeness.
 - **Cover a range of concentrations.** In clean indoor air every device reads low and they agree trivially.
-  Plan controlled events (cooking, incense, opening a window) and note their times in the run notes.
+  Plan controlled events (cooking, incense, opening a window) and mark each one on the Live page as it happens.
 - **Test several units of each model** where you can, to report precision between units.
 - **Put one of your own monitors in a camera's view as well**, and mark it "This is one of our own monitors"
   with its cloud ID. Its camera-read values can then be compared with what it sent to your cloud. That
@@ -46,7 +46,10 @@ the test is set up. This checklist covers both.
 
 - Check the Live page once or twice a day, or set `ALERT_WEBHOOK_URL` to be messaged when something breaks.
 - Work through the **Review** queue regularly. A few minutes a day beats hundreds of items at the end.
-- Note any interventions (doors opened, monitor moved, power cut) in the run notes with the time.
+- Mark every event and intervention (incense lit, door opened, monitor moved, power cut) on the **Live** page with the
+  buttons above the chart, or **Other / earlier…** for anything else or something you forgot to mark at the time.
+  They appear on all charts and in the report.
+- Every day or two, do ~10 **spot checks** (Review → Spot check), so the reading accuracy is measured along the way.
 - If an alert says a camera view **shifted**, readings are being corrected automatically. Check that nothing else
   changed (e.g. a monitor was picked up and put back), then press **Accept new position** on Calibrate. If a monitor
   is **not found**, its readings go to review until you fix the setup or re-mark its corners.
@@ -55,12 +58,15 @@ the test is set up. This checklist covers both.
 ## Ending the run
 
 1. **Stop** the run on the Data page.
-2. Clear the review queue for the run period.
+2. Clear the review queue for the run period, and make sure every monitor and reading has about 50 **spot checks**
+   (the Spot check tab shows the count), so the report can state the reading accuracy with a confidence range.
 3. Export the **readings CSV**, the **pictures manifest** and the **reference CSV** for the run, and keep them with the backup.
 4. Open **Results** for the run. Choose the reading, the averaging period (1 hour and 24 hours are usual for PM2.5)
    and the reference. You get:
-   - the statistics table, time series and scatter plots;
-   - reading quality, and the own-monitor accuracy check;
+   - the statistics table, time series with the events marked, and scatter plots;
+   - agreement by humidity (if any monitor or the reference shows humidity);
+   - reading accuracy from the spot checks, what the review queue corrected, and odd jumps caught;
    - a draft methods paragraph.
 
-   Download the CSVs, or print the page to PDF. For a figure of the setup, use **Lined up → Download as image**.
+   **Download report (Word)** puts all of it, for every reading, into one editable document with figures.
+   Download the CSVs for your own analysis. For a figure of the setup, use **Lined up → Download as image**.

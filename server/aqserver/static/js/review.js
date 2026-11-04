@@ -87,8 +87,98 @@ $('#frame-close').addEventListener('click', () => $('#frame-dialog').close());
 
 for (const id of ['#f-camera', '#f-metric', '#f-order']) $(id).addEventListener('change', () => load());
 
+// --- spot check -------------------------------------------------------------------------------
+// Random automatically accepted readings, checked by a person: the basis of the accuracy figure.
+
+function spotParams() {
+  const v = $('#spot-run').value;
+  return v ? new URLSearchParams({ run_id: v }) : new URLSearchParams();
+}
+
+async function loadSpot() {
+  const params = spotParams();
+  params.set('limit', 10);
+  const res = await api(`/api/spotcheck?${params}`);
+  $('#spot-target').textContent = res.target;
+  renderSpotProgress(res);
+  const list = $('#spot-list');
+  list.replaceChildren(...(res.items.length ? res.items.map(spotCard)
+    : [el('div', { class: 'panel muted' }, 'No automatically accepted readings left to check in this period.')]));
+  list.querySelector('button.primary')?.focus();
+}
+
+function renderSpotProgress(res) {
+  const rows = res.progress;
+  $('#spot-progress').replaceChildren(
+    el('thead', {}, el('tr', {}, ['Monitor', 'Reading', 'Checked', 'Accuracy so far'].map((h, i) => el('th', { class: i > 1 ? 'numcell' : null }, h)))),
+    el('tbody', {}, rows.length ? rows.map(r => el('tr', {},
+      el('td', {}, r.device_name), el('td', {}, metricLabel(r.metric, catalog)),
+      el('td', { class: 'numcell' }, `${r.spot_checked} of ${res.target}`),
+      el('td', { class: 'numcell' }, r.accuracy_pct === null ? '–' : `${r.accuracy_pct}% (${r.ci_low}–${r.ci_high}%)`)))
+      : [el('tr', {}, el('td', { colspan: 4, class: 'muted' }, 'No readings in this period yet.'))]));
+}
+
+function spotCard(item) {
+  const input = el('input', { type: 'number', step: 'any', inputmode: 'decimal', 'aria-label': 'Value shown in the picture' });
+  const node = el('article', { class: 'review-card' });
+  const act = async (action, value) => {
+    try {
+      await api(`/api/readings/${item.id}/spotcheck`, { method: 'POST', body: { action, value } });
+      const p = spotParams();
+      p.set('limit', 0);
+      api(`/api/spotcheck?${p}`).then(renderSpotProgress).catch(() => {});
+      node.classList.add('done');
+      node.querySelectorAll('button, input').forEach(b => { b.disabled = true; });
+      node.nextElementSibling?.querySelector('button.primary')?.focus();
+      setTimeout(() => {
+        node.remove();
+        if (!$('#spot-list .review-card:not(.done)')) loadSpot();
+      }, 300);
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  const wrong = () => {
+    if (input.value === '') { input.focus(); toast('Type the value shown in the picture', 'error'); return; }
+    act('wrong', Number(input.value));
+  };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); wrong(); } });
+  const label = metricLabel(item.metric, catalog);
+  node.append(
+    el('img', { src: `/api/readings/${item.id}/crop.png`, alt: `${label} on ${item.device_name}`, loading: 'lazy' }),
+    el('div', { class: 'meta' }, el('strong', {}, `${item.device_name} · ${label}`), el('span', {}, fmtDateTime(item.t_ms))),
+    el('div', { class: 'ocr' }, 'Machine read: ', el('strong', { class: 'num' }, item.raw_text), item.unit ? ` ${item.unit}` : ''),
+    el('div', { class: 'actions' },
+      el('button', { type: 'button', class: 'primary', onclick: () => act('right') }, 'Matches the picture'),
+      input,
+      el('button', { type: 'button', onclick: wrong }, 'Wrong: save this value'),
+      el('button', { type: 'button', onclick: () => act('unclear') }, 'Can’t tell'),
+      el('button', { type: 'button', onclick: () => openFrame(item) }, 'Full picture')),
+  );
+  return node;
+}
+
+function setMode(mode) {
+  const spot = mode === 'spot';
+  for (const [id, on] of [['#tab-queue', !spot], ['#tab-spot', spot]]) {
+    $(id).setAttribute('aria-selected', String(on));
+    $(id).setAttribute('aria-pressed', String(on));
+  }
+  $('#spot').classList.toggle('hidden', !spot);
+  for (const id of ['#queue-head', '#list']) $(id).classList.toggle('hidden', spot);
+  if (spot) $('#more').classList.add('hidden');
+  history.replaceState(null, '', spot ? '#spot' : '#');
+  if (spot) loadSpot().catch(e => toast(e.message, 'error'));
+  else load();
+}
+$('#tab-queue').addEventListener('click', () => setMode('queue'));
+$('#tab-spot').addEventListener('click', () => setMode('spot'));
+$('#spot-run').addEventListener('change', () => loadSpot().catch(e => toast(e.message, 'error')));
+
 (async () => {
   catalog = await getCatalog();
   await loadFilters();
-  await Promise.all([load(), loadStats()]);
+  const runs = await api('/api/runs');
+  $('#spot-run').replaceChildren(...runs.map(r => el('option', { value: r.id }, `${r.name}${r.ended_ms ? '' : ' (running)'}`)),
+    el('option', { value: '' }, 'All time'));
+  await loadStats();
+  setMode(location.hash === '#spot' ? 'spot' : 'queue');
 })();

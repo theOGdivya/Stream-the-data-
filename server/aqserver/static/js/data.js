@@ -7,6 +7,7 @@ const exportLinks = q => [
   el('a', { class: 'btn', href: `/api/export/readings.csv?${q}` }, 'Readings CSV'),
   el('a', { class: 'btn', href: `/api/export/frames.csv?${q}` }, 'Pictures manifest'),
   el('a', { class: 'btn', href: `/api/export/reference.csv?${q}` }, 'Reference CSV'),
+  el('a', { class: 'btn', href: `/api/export/events.csv?${q}` }, 'Events CSV'),
 ];
 
 async function loadRuns() {

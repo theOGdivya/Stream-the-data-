@@ -79,13 +79,17 @@ export function fmtValue(v, metric) {
 }
 
 let toastTimer;
-export function toast(msg, kind = '') {
+// action: optional { label, onClick } shown as a button in the toast (e.g. Undo).
+export function toast(msg, kind = '', action = null) {
   let t = $('.toast');
   if (!t) { t = el('div', { class: 'toast', role: 'status' }); document.body.append(t); }
   t.className = `toast ${kind}`;
   t.textContent = msg;
+  if (action) {
+    t.append(' ', el('button', { type: 'button', class: 'toast-action', onclick: () => { t.remove(); action.onClick(); } }, action.label));
+  }
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), kind === 'error' ? 6000 : 3000);
+  toastTimer = setTimeout(() => t.remove(), kind === 'error' || action ? 6000 : 3000);
 }
 
 let catalog;
