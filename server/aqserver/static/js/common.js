@@ -169,6 +169,7 @@ export function renderTopbar(active) {
       el('a', { class: 'brand', href: 'index.html' }, el('span', { class: 'brand-mark' }, icon('logo', 18)), 'AQ Test Platform'),
       nav, el('div', { class: 'spacer' }), themeBtn));
   document.body.prepend(bar);
+  document.body.append(el('footer', { class: 'site-footer' }, '© 2026 EMERGESPHERE Technologies Pvt. Ltd. All rights reserved.'));
   nav.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
   updateReviewCount();
   setInterval(updateReviewCount, 30000);
