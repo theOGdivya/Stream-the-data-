@@ -144,6 +144,11 @@ Not built yet:
 - A learned digit reader trained on your corrected readings, for unusual fonts.
 - Pulling your own monitors' data straight from your cloud's API (for now: CSV upload or JSON push).
 
+## Contributors
+
+- Divya Sawant ([theOGdivya](https://github.com/theOGdivya))
+- Shivraj Patil ([ShivrajPatilHQ](https://github.com/ShivrajPatilHQ))
+
 ## Licence
 
 © 2026 EMERGESPHERE Technologies Pvt. Ltd. All rights reserved. This software is proprietary:
