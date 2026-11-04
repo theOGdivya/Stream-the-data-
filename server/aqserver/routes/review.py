@@ -127,7 +127,8 @@ def spot_check_queue(run_id: int | None = None, since_ms: int | None = None, unt
         d, f = db.get(Device, r.device_id), db.get(Field, r.field_id)
         items.append(_reading_dict(r, d, f))
     progress = [{"device_name": a["device_name"], "metric": a["metric"], "spot_checked": a["spot_checked"],
-                 "accuracy_pct": a["accuracy_pct"], "ci_low": a["ci_low"], "ci_high": a["ci_high"]}
+                 "spot_right": a["spot_right"], "accuracy_pct": a["accuracy_pct"], "ci_low": a["ci_low"],
+                 "ci_high": a["ci_high"]}
                 for a in reading_accuracy(db, start, end) if a["auto_accepted"]]
     return {"target": SPOT_TARGET, "items": items, "progress": progress}
 
