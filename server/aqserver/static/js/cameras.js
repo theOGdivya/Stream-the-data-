@@ -134,7 +134,7 @@ function renderRecording(p) {
         onInfo: i => {
           if (!i.ok) { badge.className = 'pill badge'; badge.textContent = 'Waiting for the first picture…'; return; }
           badge.className = i.kind === 'live' ? 'pill badge live' : 'pill badge';
-          badge.textContent = i.kind === 'live' ? 'Live' : `Still · ${ago(i.captured)}`;
+          badge.textContent = i.kind === 'live' ? 'Live' : `Picture · ${ago(i.captured)}`;
         },
       });
       poller.start();

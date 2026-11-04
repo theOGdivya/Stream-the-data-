@@ -108,26 +108,68 @@ export function initTheme() {
     if (saved) document.documentElement.dataset.theme = saved;
   } catch { /* storage blocked */ }
 }
+function isDark() {
+  const root = document.documentElement;
+  return root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+}
 function toggleTheme() {
   const root = document.documentElement;
-  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  root.dataset.theme = dark ? 'light' : 'dark';
+  root.dataset.theme = isDark() ? 'light' : 'dark';
   try { localStorage.setItem('theme', root.dataset.theme); } catch { /* ignore */ }
   window.dispatchEvent(new Event('themechange'));
 }
 
+// Small line icons (24-unit grid, drawn with the current text colour).
+const ICONS = {
+  live: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  lined: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="9.5" y="4" width="5" height="16" rx="1"/><rect x="16" y="4" width="5" height="16" rx="1"/>',
+  cameras: '<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/>',
+  calibrate: '<path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><path d="M9 12h6M12 9v6"/>',
+  review: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
+  results: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  data: '<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  logo: '<path d="M3 8c3-2.5 6-2.5 9 0s6 2.5 9 0M3 13c3-2.5 6-2.5 9 0s6 2.5 9 0M3 18c3-2.5 6-2.5 9 0s6 2.5 9 0"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+};
+export function icon(name, size = 18) {
+  const span = document.createElement('span');
+  span.className = 'ico';
+  span.setAttribute('aria-hidden', 'true');
+  span.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
+  return span;
+}
+
+// Pages in the order of the work: watch the test, set it up, then analyse it.
+const NAV = [
+  [['index.html', 'Live', 'live'], ['lined.html', 'Lined up', 'lined']],
+  [['cameras.html', 'Cameras', 'cameras'], ['calibrate.html', 'Calibrate', 'calibrate']],
+  [['review.html', 'Review', 'review'], ['results.html', 'Results', 'results'], ['data.html', 'Data & exports', 'data']],
+];
+
 export function renderTopbar(active) {
   initTheme();
-  const pages = [['index.html', 'Live'], ['lined.html', 'Lined up'], ['cameras.html', 'Cameras'], ['calibrate.html', 'Calibrate'], ['review.html', 'Review'],
-    ['results.html', 'Results'], ['data.html', 'Data & exports']];
-  const reviewCount = el('span', { class: 'count hidden', id: 'review-count' });
+  const reviewCount = el('span', { class: 'count hidden', id: 'review-count', title: 'Readings waiting for review' });
   const nav = el('nav', { class: 'nav', 'aria-label': 'Main' },
-    pages.map(([href, label]) => el('a', { href, 'aria-current': href === active ? 'page' : null }, label, href === 'review.html' ? reviewCount : null)));
+    NAV.map((group, gi) => [gi ? el('span', { class: 'nav-sep', 'aria-hidden': 'true' }) : null,
+      ...group.map(([href, label, ic]) => el('a', { href, 'aria-current': href === active ? 'page' : null },
+        icon(ic, 17), el('span', {}, label), href === 'review.html' ? reviewCount : null))]).flat());
+  const themeBtn = el('button', { class: 'iconbtn', type: 'button' });
+  const paintTheme = () => {
+    const dark = isDark();
+    themeBtn.replaceChildren(icon(dark ? 'sun' : 'moon', 17), el('span', { class: 'theme-label' }, dark ? 'Light' : 'Dark'));
+    themeBtn.title = dark ? 'Switch to the light theme' : 'Switch to the dark theme';
+    themeBtn.setAttribute('aria-label', themeBtn.title);
+  };
+  themeBtn.addEventListener('click', () => { toggleTheme(); paintTheme(); });
+  paintTheme();
   const bar = el('header', { class: 'topbar' },
     el('div', { class: 'topbar-inner' },
-      el('div', { class: 'brand' }, 'AQ Test Platform'), nav, el('div', { class: 'spacer' }),
-      el('button', { class: 'iconbtn', type: 'button', title: 'Switch light/dark', onclick: toggleTheme }, '◐ Theme')));
+      el('a', { class: 'brand', href: 'index.html' }, el('span', { class: 'brand-mark' }, icon('logo', 18)), 'AQ Test Platform'),
+      nav, el('div', { class: 'spacer' }), themeBtn));
   document.body.prepend(bar);
+  nav.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
   updateReviewCount();
   setInterval(updateReviewCount, 30000);
 }

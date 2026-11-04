@@ -11,11 +11,16 @@
 </head>
 <body>
   <main>
+    <header class="page-head">
+      <h1>Live</h1>
+      <p class="page-intro">What is being recorded right now: cameras, the latest number on every monitor, and the readings over time. Updates by itself.</p>
+    </header>
     <section class="strip" id="strip" aria-label="Status"></section>
+    <section class="panel onboard hidden" id="onboard" aria-label="Getting started"></section>
     <section class="alerts" id="alerts" aria-live="polite"></section>
     <section class="cams" id="cams" aria-label="Cameras">
-      <div class="panel" id="no-cams"><h2>No cameras yet</h2>
-        <p style="margin-bottom:0">Choose which webcam to record on the <a href="cameras.html">Cameras page →</a></p></div>
+      <div class="panel empty-state" id="no-cams"><strong>No cameras yet</strong>
+        <span>Choose which webcam to record on the <a href="cameras.html">Cameras page</a>, or open the recorder in a browser.</span></div>
     </section>
     <section class="panel" aria-labelledby="chart-title">
       <div class="panel-head">
