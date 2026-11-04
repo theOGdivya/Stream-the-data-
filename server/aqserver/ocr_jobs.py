@@ -15,6 +15,10 @@ from .ocr.pipeline import DeviceSpec, FieldSpec, FieldResult, load_image, run_fr
 from .plausibility import check_around
 
 LOST_NOTE = "monitor not found where it was marked (camera moved or view blocked)"
+# A monitor that can't be matched is still read where it was last seen ("kept") only for this
+# long after its last good match. Longer than that, the camera may really have moved (and the
+# boxes may be on other digits), so readings go to review and an alert asks for a new reference.
+KEEP_FOR_MS = 30 * 60_000
 
 
 def field_spec(f: Field) -> FieldSpec:
@@ -75,6 +79,9 @@ def align_specs(db: Session, settings: Settings, frame: Frame, img: np.ndarray,
             d = db.get(Device, spec.id)
             last = d.align_corners if d is not None and d.align_corners else spec.corners
             res = AlignResult("lost", last, (d.align_shift_px or 0.0) if d is not None else 0.0, res.inliers)
+            good_ms = (d.align_good_ms or d.updated_ms) if d is not None else None  # never matched yet: since marked
+            recent_match = good_ms is not None and abs(frame.captured_ms - good_ms) <= KEEP_FOR_MS
+            res.may_keep = recent_match
         results[spec.id] = res
         out.append(replace(spec, corners=res.corners) if res.status in ("adjusted", "lost") else spec)
     return out, results
@@ -93,7 +100,7 @@ def read_frame(db: Session, settings: Settings, frame: Frame, img: np.ndarray, s
         if res.status != "lost":
             continue
         mine = [r for r in results if r.device_id == dev_id]
-        if mine and all(r.status == "ok" for r in mine):
+        if getattr(res, "may_keep", False) and mine and all(r.status == "ok" for r in mine):
             align[dev_id] = AlignResult("kept", res.corners, res.shift_px, res.inliers)
         else:
             for r in mine:
@@ -133,6 +140,8 @@ def process_frame(db: Session, frame: Frame, settings: Settings, specs: list[Dev
                 continue  # keep the last known position
             d.align_shift_px = round(res.shift_px, 1)
             d.align_corners = res.corners if res.status == "adjusted" else None
+            if res.status in ("ok", "adjusted"):
+                d.align_good_ms = frame.captured_ms
 
     existing = {fid for (fid,) in db.execute(select(Reading.field_id).where(Reading.frame_id == frame.id)).all()}
     added = 0

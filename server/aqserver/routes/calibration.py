@@ -163,7 +163,7 @@ def _reference_frame_id(db: Session, camera_id: str, requested: int | None) -> i
 
 
 def _reset_alignment(d: Device) -> None:
-    d.align_status = d.align_shift_px = d.align_corners = d.align_ms = None
+    d.align_status = d.align_shift_px = d.align_corners = d.align_ms = d.align_good_ms = None
 
 
 def _png_data_url(img: np.ndarray | None) -> str | None:

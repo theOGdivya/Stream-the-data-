@@ -22,6 +22,17 @@ def get_db(request: Request) -> Iterator[Session]:
         db.close()
 
 
+def get_read_db(request: Request) -> Iterator[Session]:
+    """For long read-only requests (Results, the report): every statement commits by itself, so
+    no transaction stays open while numbers and figures are computed."""
+    db: Session = request.app.state.Session()
+    try:
+        db.connection(execution_options={"isolation_level": "AUTOCOMMIT"})
+        yield db
+    finally:
+        db.close()
+
+
 def get_settings(request: Request) -> Settings:
     return request.app.state.settings
 
