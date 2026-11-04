@@ -107,7 +107,30 @@ async function loadSpot() {
   list.querySelector('button.primary')?.focus();
 }
 
+let spotProgress = null; // last progress table, updated in place after each answer
+
+// 95% Wilson interval, as on the server (accuracy.wilson), in percent with one decimal.
+function wilson(k, n, z = 1.96) {
+  const p = k / n, den = 1 + (z * z) / n;
+  const centre = (p + (z * z) / (2 * n)) / den;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / den;
+  const r = v => Math.round(1000 * v) / 10;
+  return [r(Math.max(0, centre - half)), r(Math.min(1, centre + half))];
+}
+
+// Count one answer without asking the server to re-aggregate the whole run.
+function countSpot(item, status) {
+  const row = spotProgress?.progress.find(r => r.device_name === item.device_name && r.metric === item.metric);
+  if (!row || (status !== 'verified' && status !== 'corrected')) return;
+  row.spot_checked += 1;
+  row.spot_right += status === 'verified' ? 1 : 0;
+  row.accuracy_pct = Math.round((1000 * row.spot_right) / row.spot_checked) / 10;
+  [row.ci_low, row.ci_high] = wilson(row.spot_right, row.spot_checked);
+  renderSpotProgress(spotProgress);
+}
+
 function renderSpotProgress(res) {
+  spotProgress = res;
   const rows = res.progress;
   $('#spot-progress').replaceChildren(
     el('thead', {}, el('tr', {}, ['Monitor', 'Reading', 'Checked', 'Accuracy so far'].map((h, i) => el('th', { class: i > 1 ? 'numcell' : null }, h)))),
@@ -123,10 +146,8 @@ function spotCard(item) {
   const node = el('article', { class: 'review-card' });
   const act = async (action, value) => {
     try {
-      await api(`/api/readings/${item.id}/spotcheck`, { method: 'POST', body: { action, value } });
-      const p = spotParams();
-      p.set('limit', 0);
-      api(`/api/spotcheck?${p}`).then(renderSpotProgress).catch(() => {});
+      const saved = await api(`/api/readings/${item.id}/spotcheck`, { method: 'POST', body: { action, value } });
+      countSpot(item, saved.status);
       node.classList.add('done');
       node.querySelectorAll('button, input').forEach(b => { b.disabled = true; });
       node.nextElementSibling?.querySelector('button.primary')?.focus();
